@@ -1,5 +1,8 @@
 pub mod backend;
 pub mod input;
+pub mod workspace;
+
+use workspace::{WorkspaceManager, LayoutMode};
 
 use smithay::{
     backend::renderer::element::RenderElement,
@@ -61,7 +64,7 @@ pub struct WebWMCompositor {
     pub output_manager_state: OutputManagerState,
     pub popup_manager: PopupManager,
     pub seat: Seat<Self>,
-    pub windows: Vec<Window>,
+    pub workspace_manager: WorkspaceManager,
     pub config: Config,
     pub stylesheet: Option<StyleSheet>,
 }
@@ -93,6 +96,22 @@ impl WebWMCompositor {
         let popup_manager = PopupManager::default();
 
         let stylesheet = config.stylesheet.clone();
+        
+        // Initialize workspace manager
+        let mut workspace_manager = WorkspaceManager::new();
+        
+        // Configure workspaces from config if available
+        if let Some(ref desktop) = config.desktop {
+            for ws_config in &desktop.workspaces {
+                let layout_mode = LayoutMode::from(ws_config.layout.as_str());
+                let mut workspace = workspace::Workspace::new(
+                    ws_config.id,
+                    ws_config.name.clone(),
+                    layout_mode,
+                );
+                workspace_manager.add_workspace(workspace);
+            }
+        }
 
         Self {
             display_handle,
@@ -106,7 +125,7 @@ impl WebWMCompositor {
             output_manager_state,
             popup_manager,
             seat,
-            windows: Vec::new(),
+            workspace_manager,
             config,
             stylesheet,
         }
@@ -115,17 +134,45 @@ impl WebWMCompositor {
     pub fn add_window(&mut self, toplevel: ToplevelSurface) {
         let window = Window::new(toplevel);
         
+        // Check if window should go to specific workspace
+        let target_workspace = self.get_target_workspace_for_window(&window);
+        
         // Apply window rules from config
         self.apply_window_rules(&window);
         
-        // Add to space
-        self.space.map_element(window.clone(), (0, 0), false);
-        self.windows.push(window);
+        // Add to appropriate workspace
+        if let Some(ws_id) = target_workspace {
+            if let Some(workspace) = self.workspace_manager.get_workspace_mut(ws_id) {
+                workspace.add_window(window.clone());
+                println!("Window added to workspace {}: {} total windows in workspace", 
+                         ws_id, workspace.len());
+            }
+        } else {
+            // Add to active workspace
+            self.workspace_manager.add_window_to_active(window.clone());
+        }
         
-        println!("Window added: {} total windows", self.windows.len());
+        // Add to space (for rendering)
+        self.space.map_element(window, (0, 0), false);
         
         // Relayout
         self.relayout();
+    }
+
+    fn get_target_workspace_for_window(&self, window: &Window) -> Option<u32> {
+        if let Some(surface) = window.toplevel() {
+            let app_id = surface.app_id().unwrap_or_default();
+            
+            // Check window rules for workspace assignment
+            for rule in &self.config.window_rules {
+                if rule.app_id == app_id {
+                    if let Some(ws) = rule.workspace {
+                        return Some(ws);
+                    }
+                }
+            }
+        }
+        None
     }
 
     fn apply_window_rules(&self, window: &Window) {
@@ -157,19 +204,28 @@ impl WebWMCompositor {
     }
 
     pub fn remove_window(&mut self, toplevel: &ToplevelSurface) {
-        if let Some(window) = self.windows.iter()
+        // Find and remove the window
+        let windows = self.workspace_manager.active_workspace().windows.clone();
+        
+        if let Some(window) = windows.iter()
             .find(|w| w.toplevel().map(|t| &t == toplevel).unwrap_or(false))
             .cloned()
         {
             self.space.unmap_elem(&window);
-            self.windows.retain(|w| w != &window);
-            println!("Window removed: {} remaining", self.windows.len());
+            self.workspace_manager.remove_window(&window);
+            
+            let active_ws = self.workspace_manager.active_workspace();
+            println!("Window removed: {} remaining in workspace {}", 
+                     active_ws.len(), active_ws.id);
+            
             self.relayout();
         }
     }
 
     fn relayout(&mut self) {
-        if self.windows.is_empty() {
+        let active_workspace = self.workspace_manager.active_workspace();
+        
+        if active_workspace.is_empty() {
             return;
         }
 
@@ -177,15 +233,16 @@ impl WebWMCompositor {
         let output_size = Size::from((1920, 1080));
         let gaps = self.config.layout.gaps as i32;
         
-        match self.config.layout.default_mode.as_str() {
-            "tiling" => self.layout_tiling(output_size, gaps),
-            "floating" => self.layout_floating(output_size),
-            _ => self.layout_tiling(output_size, gaps),
+        match active_workspace.layout_mode {
+            LayoutMode::Tiling => self.layout_tiling(output_size, gaps),
+            LayoutMode::Floating => self.layout_floating(output_size),
+            LayoutMode::Monocle => self.layout_monocle(output_size),
         }
     }
 
     fn layout_tiling(&mut self, output_size: Size<i32, smithay::utils::Physical>, gaps: i32) {
-        let window_count = self.windows.len();
+        let windows = &self.workspace_manager.active_workspace().windows;
+        let window_count = windows.len();
         
         if window_count == 0 {
             return;
@@ -196,14 +253,14 @@ impl WebWMCompositor {
         let window_height = available_height / window_count as i32;
         let available_width = output_size.w - (gaps * 2);
 
-        for (i, window) in self.windows.iter().enumerate() {
+        for (i, window) in windows.iter().enumerate() {
             let x = gaps;
             let y = gaps + (i as i32 * (window_height + gaps));
             
             // Position the window
             self.space.map_element(window.clone(), (x, y), false);
             
-            // Request window to resize (window decides if it wants to comply)
+            // Request window to resize
             if let Some(toplevel) = window.toplevel() {
                 toplevel.with_pending_state(|state| {
                     state.size = Some((available_width as u32, window_height as u32).into());
@@ -212,15 +269,19 @@ impl WebWMCompositor {
             }
         }
 
-        println!("Relayout: {} windows in tiling mode (gaps: {}px)", window_count, gaps);
+        let active_ws = self.workspace_manager.active_workspace();
+        println!("Relayout: {} windows in tiling mode on workspace {} (gaps: {}px)", 
+                 window_count, active_ws.id, gaps);
     }
 
     fn layout_floating(&mut self, output_size: Size<i32, smithay::utils::Physical>) {
+        let windows = &self.workspace_manager.active_workspace().windows;
+        
         // Floating mode: center windows with offset
         let base_x = (output_size.w - 800) / 2;
         let base_y = (output_size.h - 600) / 2;
 
-        for (i, window) in self.windows.iter().enumerate() {
+        for (i, window) in windows.iter().enumerate() {
             let offset = i as i32 * 30;
             let x = base_x + offset;
             let y = base_y + offset;
@@ -235,7 +296,32 @@ impl WebWMCompositor {
             }
         }
 
-        println!("Relayout: {} windows in floating mode", self.windows.len());
+        let active_ws = self.workspace_manager.active_workspace();
+        println!("Relayout: {} windows in floating mode on workspace {}", 
+                 windows.len(), active_ws.id);
+    }
+
+    fn layout_monocle(&mut self, output_size: Size<i32, smithay::utils::Physical>) {
+        let windows = &self.workspace_manager.active_workspace().windows;
+        let focused_idx = self.workspace_manager.active_workspace().focused_window_idx;
+        
+        // Monocle: fullscreen the focused window, hide others
+        if let Some(idx) = focused_idx {
+            if let Some(window) = windows.get(idx) {
+                self.space.map_element(window.clone(), (0, 0), false);
+                
+                if let Some(toplevel) = window.toplevel() {
+                    toplevel.with_pending_state(|state| {
+                        state.size = Some((output_size.w as u32, output_size.h as u32).into());
+                    });
+                    toplevel.send_configure();
+                }
+            }
+        }
+
+        let active_ws = self.workspace_manager.active_workspace();
+        println!("Relayout: monocle mode on workspace {} (focused window fullscreen)", 
+                 active_ws.id);
     }
 
     pub fn handle_keyboard_input(&mut self, keycode: u32, modifiers: ModifiersState) {

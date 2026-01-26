@@ -72,7 +72,31 @@ impl JSRuntime {
             // Add utility functions
             self.add_utility_functions(&globals)?;
             
-            Ok(())
+            // wm.switchToWorkspace(workspace)
+        wm.set("switchToWorkspace", Function::new(
+            self.context.clone(),
+            |ws: u32| {
+                println!("JS: switchToWorkspace({})", ws);
+            }
+        )).map_err(|e| format!("Failed to set switchToWorkspace: {:?}", e))?;
+        
+        // wm.cycleWorkspaceNext()
+        wm.set("cycleWorkspaceNext", Function::new(
+            self.context.clone(),
+            || {
+                println!("JS: cycleWorkspaceNext()");
+            }
+        )).map_err(|e| format!("Failed to set cycleWorkspaceNext: {:?}", e))?;
+        
+        // wm.cycleWorkspacePrev()
+        wm.set("cycleWorkspacePrev", Function::new(
+            self.context.clone(),
+            || {
+                println!("JS: cycleWorkspacePrev()");
+            }
+        )).map_err(|e| format!("Failed to set cycleWorkspacePrev: {:?}", e))?;
+        
+        Ok(())
         })
     }
     

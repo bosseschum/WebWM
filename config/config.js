@@ -50,6 +50,10 @@ for (let i = 1; i <= 9; i++) {
   keybind(`${MOD}+${SHIFT}+${i}`, () => wm.moveToWorkspace(i));
 }
 
+// Workspace cycling
+keybind(`${MOD}+Tab`, () => wm.cycleWorkspaceNext());
+keybind(`${MOD}+${SHIFT}+Tab`, () => wm.cycleWorkspacePrev());
+
 // Layout controls
 keybind(`${MOD}+t`, () => wm.setLayout('tiling'));
 keybind(`${MOD}+space`, () => wm.cycleLayout());

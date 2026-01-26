@@ -85,10 +85,11 @@ impl WebWMBackend {
 
         let mut renderer = self.winit.renderer();
         
-        // Collect render elements from all windows
+        // Collect render elements from windows in active workspace only
         let mut elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
 
-        for window in &compositor.windows {
+        let active_workspace = compositor.workspace_manager.active_workspace();
+        for window in &active_workspace.windows {
             let location = compositor.space.element_location(window).unwrap_or((0, 0).into());
             
             // Get render elements from the window

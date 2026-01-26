@@ -178,7 +178,7 @@ impl InputHandler {
 
             Action::Close => {
                 println!("Closing focused window");
-                if let Some(window) = compositor.windows.first() {
+                if let Some(window) = compositor.workspace_manager.focused_window() {
                     if let Some(toplevel) = window.toplevel() {
                         toplevel.send_close();
                     }
@@ -192,7 +192,16 @@ impl InputHandler {
 
             Action::Move { workspace } => {
                 println!("Moving window to workspace: {}", workspace);
-                // TODO: Implement workspace management
+                if let Some(window) = compositor.workspace_manager.focused_window().cloned() {
+                    compositor.workspace_manager.move_window_to_workspace(window, *workspace);
+                    compositor.relayout();
+                }
+            }
+
+            Action::SwitchWorkspace { workspace } => {
+                println!("Switching to workspace: {}", workspace);
+                compositor.workspace_manager.switch_to_workspace(*workspace);
+                compositor.relayout();
             }
 
             Action::ToggleFloating => {
@@ -208,33 +217,18 @@ impl InputHandler {
     }
 
     fn focus_direction(&mut self, direction: &str, compositor: &mut WebWMCompositor) {
-        let current_idx = 0; // TODO: Track focused window index
-        let window_count = compositor.windows.len();
-
-        if window_count == 0 {
-            return;
-        }
-
-        let next_idx = match direction {
+        match direction {
             "up" | "left" => {
-                if current_idx > 0 {
-                    current_idx - 1
-                } else {
-                    window_count - 1
-                }
+                compositor.workspace_manager.focus_prev_window();
             }
             "down" | "right" => {
-                if current_idx < window_count - 1 {
-                    current_idx + 1
-                } else {
-                    0
-                }
+                compositor.workspace_manager.focus_next_window();
             }
             _ => return,
         };
 
-        if let Some(window) = compositor.windows.get(next_idx) {
-            // Set keyboard focus
+        // Update keyboard focus
+        if let Some(window) = compositor.workspace_manager.focused_window() {
             if let Some(keyboard) = compositor.seat.get_keyboard() {
                 if let Some(surface) = window.wl_surface() {
                     keyboard.set_focus(
@@ -242,7 +236,10 @@ impl InputHandler {
                         Some(surface.clone()),
                         SERIAL_COUNTER.next_serial(),
                     );
-                    println!("Focused window {}", next_idx);
+                    
+                    let workspace = compositor.workspace_manager.active_workspace();
+                    let window_idx = workspace.focused_window_idx.unwrap_or(0);
+                    println!("Focused window {} in workspace {}", window_idx, workspace.id);
                 }
             }
         }
