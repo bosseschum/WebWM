@@ -1,3 +1,6 @@
+pub mod backend;
+pub mod input;
+
 use smithay::{
     backend::renderer::element::RenderElement,
     delegate_compositor, delegate_data_device, delegate_output, delegate_seat,

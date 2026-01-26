@@ -13,31 +13,30 @@ use smithay::{
     },
     desktop::space::SpaceElement,
     output::{Mode, Output, PhysicalProperties, Subpixel},
-    reexports::{
-        calloop::{
-            timer::{TimeoutAction, Timer},
-            EventLoop,
-        },
-        wayland_server::Display,
-    },
+    reexports::calloop::EventLoop,
     utils::{Rectangle, Size, Transform},
 };
-use std::time::Duration;
 
 use crate::compositor::{WebWMCompositor, ClientState};
+use crate::compositor::input::InputHandler;
 
 pub struct WebWMBackend {
     pub winit: WinitGraphicsBackend<GlesRenderer>,
     pub damage_tracker: OutputDamageTracker,
     pub output: Output,
+    pub input_handler: InputHandler,
 }
 
 impl WebWMBackend {
-    pub fn new() -> Result<(Self, EventLoop<'static, WebWMCompositor>), Box<dyn std::error::Error>> {
-        let mut event_loop = EventLoop::try_new()?;
-        
-        // Initialize winit backend (creates window on your existing desktop for testing)
-        let (backend, mut input) = winit::init::<GlesRenderer>()?;
+    pub fn new<F>(
+        event_loop: &EventLoop<'static, WebWMCompositor>,
+        mut event_handler: F,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        F: FnMut(WinitEvent, &mut WebWMCompositor) + 'static,
+    {
+        // Initialize winit backend
+        let (backend, winit_events) = winit::init::<GlesRenderer>()?;
         
         // Create output
         let mode = Mode {
@@ -59,21 +58,19 @@ impl WebWMBackend {
 
         let damage_tracker = OutputDamageTracker::from_output(&output);
 
-        // Insert winit backend into event loop
+        // Insert event source into event loop
         event_loop
             .handle()
-            .insert_source(input, move |event, _, state| {
-                state.handle_winit_event(event);
+            .insert_source(winit_events, move |event, _, compositor| {
+                event_handler(event, compositor);
             })?;
 
-        Ok((
-            Self {
-                winit: backend,
-                damage_tracker,
-                output,
-            },
-            event_loop,
-        ))
+        Ok(Self {
+            winit: backend,
+            damage_tracker,
+            output,
+            input_handler: InputHandler::new(),
+        })
     }
 
     pub fn render(
@@ -124,7 +121,7 @@ impl WebWMBackend {
                     window.send_frame(
                         &self.output,
                         time,
-                        Duration::ZERO,
+                        std::time::Duration::ZERO,
                         |_, _| Some(self.output.clone()),
                     );
                 });
@@ -139,63 +136,18 @@ impl WebWMBackend {
 }
 
 impl WebWMCompositor {
-    pub fn handle_winit_event(&mut self, event: WinitEvent) {
+    pub fn handle_winit_event(&mut self, event: WinitEvent, input_handler: &mut InputHandler) {
         match event {
             WinitEvent::Resized { size, .. } => {
                 println!("Window resized: {:?}", size);
-                // Update output mode
             }
             WinitEvent::Input(input_event) => {
-                // Handle input events
-                use smithay::backend::input::Event;
-                
-                match input_event {
-                    smithay::backend::input::InputEvent::Keyboard { event } => {
-                        use smithay::backend::input::KeyboardKeyEvent;
-                        
-                        let keycode = event.key_code();
-                        let state = event.state();
-                        
-                        println!("Keyboard event: keycode={}, state={:?}", keycode, state);
-                        
-                        // Get keyboard handle
-                        if let Some(keyboard) = self.seat.get_keyboard() {
-                            keyboard.input::<(), _>(
-                                self,
-                                keycode,
-                                state,
-                                smithay::utils::SERIAL_COUNTER.next_serial(),
-                                0,
-                                |_, _, _| {
-                                    smithay::input::keyboard::FilterResult::Forward
-                                },
-                            );
-                        }
-                    }
-                    smithay::backend::input::InputEvent::PointerMotion { event } => {
-                        // Handle pointer motion
-                        use smithay::backend::input::PointerMotionEvent;
-                        
-                        let delta = event.delta();
-                        println!("Pointer motion: {:?}", delta);
-                    }
-                    smithay::backend::input::InputEvent::PointerButton { event } => {
-                        // Handle pointer button
-                        use smithay::backend::input::PointerButtonEvent;
-                        
-                        let button = event.button_code();
-                        let state = event.state();
-                        println!("Pointer button: button={}, state={:?}", button, state);
-                        
-                        // Focus window under cursor
-                        // TODO: Implement pointer focus
-                    }
-                    _ => {}
-                }
+                // Use the input handler to process events
+                input_handler.process_input_event(input_event, self);
             }
             WinitEvent::CloseRequested => {
-                println!("Close requested");
-                // TODO: Implement graceful shutdown
+                println!("Close requested - exiting");
+                std::process::exit(0);
             }
             _ => {}
         }

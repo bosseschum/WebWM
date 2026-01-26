@@ -6,9 +6,13 @@ use config::Config;
 use compositor::{WebWMCompositor, ClientState};
 use backend::WebWMBackend;
 
-use smithay::reexports::wayland_server::{Display, DisplayHandle};
+use smithay::reexports::{
+    wayland_server::{Display, DisplayHandle},
+    calloop::timer::{Timer, TimeoutAction},
+};
 use std::env;
 use std::time::Duration;
+use std::sync::Arc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
@@ -123,13 +127,11 @@ fn run_compositor() -> Result<(), Box<dyn std::error::Error>> {
     println!("  • Gaps: {}px", config.layout.gaps);
     println!();
     
+    // Create event loop first
+    let event_loop = smithay::reexports::calloop::EventLoop::try_new()?;
+    
     // Create Wayland display
     let mut display = Display::<WebWMCompositor>::new()?;
-    
-    // Initialize backend
-    println!("Initializing backend...");
-    let (mut backend, mut event_loop) = WebWMBackend::new()?;
-    println!("✓ Backend initialized (winit)");
     
     // Create compositor
     println!("Initializing compositor...");
@@ -139,6 +141,14 @@ fn run_compositor() -> Result<(), Box<dyn std::error::Error>> {
         config,
     );
     println!("✓ Compositor initialized");
+    
+    // Initialize backend with event handler
+    println!("Initializing backend...");
+    let mut backend = WebWMBackend::new(&event_loop, |event, compositor| {
+        let input_handler = &mut InputHandler::new(); // Temporary, will fix
+        compositor.handle_winit_event(event, input_handler);
+    })?;
+    println!("✓ Backend initialized (winit)");
     
     // Add output to space
     compositor.space.map_output(&backend.output, (0, 0));
@@ -154,21 +164,32 @@ fn run_compositor() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nTo connect a client, run:");
     println!("  WAYLAND_DISPLAY={} alacritty", socket_name);
     println!("  WAYLAND_DISPLAY={} weston-terminal", socket_name);
+    println!("\nKeybindings active:");
+    for kb in compositor.config.keybindings.iter().take(5) {
+        let mods = if kb.modifiers.is_empty() {
+            String::new()
+        } else {
+            format!("{}+", kb.modifiers.join("+"))
+        };
+        println!("  {}{}", mods, kb.key);
+    }
     println!("\nPress Ctrl+C to exit");
     println!("===========================================\n");
     
     // Insert socket into event loop
     event_loop
         .handle()
-        .insert_source(socket, |client_stream, _, state| {
-            // Accept new client
-            if let Err(e) = state
-                .display_handle
-                .insert_client(client_stream, Arc::new(ClientState {
-                    compositor_state: Default::default(),
-                }))
-            {
-                eprintln!("Error accepting client: {}", e);
+        .insert_source(socket, {
+            let dh = display.handle();
+            move |client_stream, _, _| {
+                if let Err(e) = dh.insert_client(
+                    client_stream,
+                    Arc::new(ClientState {
+                        compositor_state: Default::default(),
+                    }),
+                ) {
+                    eprintln!("Error accepting client: {}", e);
+                }
             }
         })?;
     
@@ -176,14 +197,9 @@ fn run_compositor() -> Result<(), Box<dyn std::error::Error>> {
     let timer = Timer::from_duration(Duration::from_millis(16)); // ~60 FPS
     event_loop
         .handle()
-        .insert_source(timer, |_, _, state| {
-            // Render frame
-            state.render_frame();
+        .insert_source(timer, |_, _, _| {
             TimeoutAction::ToDuration(Duration::from_millis(16))
         })?;
-    
-    // Store display in compositor for event loop access
-    let display_handle = display.handle();
     
     // Run event loop
     event_loop.run(
@@ -193,6 +209,11 @@ fn run_compositor() -> Result<(), Box<dyn std::error::Error>> {
             // Dispatch Wayland events
             display.dispatch_clients(compositor).unwrap();
             display.flush_clients().unwrap();
+            
+            // Render frame
+            if let Err(e) = backend.render(compositor) {
+                eprintln!("Render error: {:?}", e);
+            }
         },
     )?;
     
