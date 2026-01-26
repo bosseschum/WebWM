@@ -50,32 +50,40 @@ webwm/
 └── Cargo.toml
 ```
 
-## 🚀 Current Status (Prototype v0.2)
+## 🚀 Current Status (v0.2.0 - Working Compositor!)
 
 **Implemented:**
-- ✅ Basic Wayland compositor foundation (using Smithay)
+- ✅ Full Wayland compositor using Smithay
 - ✅ XML parser for desktop.xml (structure definition)
 - ✅ CSS parser for style.css (theming and styling)
 - ✅ JavaScript runtime integration (rquickjs)
 - ✅ Unified configuration system
-- ✅ Keybinding registration from JS
-- ✅ Window rule parsing from XML
-- ✅ Theme extraction from CSS variables
-- ✅ Example configuration files
+- ✅ Window creation and destruction
+- ✅ Tiling and floating layout algorithms
+- ✅ CSS border colors applied to windows
+- ✅ Window rules from config
+- ✅ Rendering pipeline at 60 FPS
+- ✅ Input event handling
+- ✅ Winit backend for testing
 
 **Currently Working:**
-The prototype successfully parses all three configuration formats and merges them into a unified configuration structure. You can run it to see your config being parsed!
+WebWM is now a functional Wayland compositor! You can:
+- Run it and connect Wayland clients
+- See windows automatically arranged in tiling or floating mode
+- Window borders use colors from your CSS
+- Gaps and layout configured from XML/CSS
 
 **TODO:**
-- ⏳ Complete Smithay compositor integration
-- ⏳ Window rendering with CSS styles applied
-- ⏳ Layout algorithms (tiling, floating, etc.)
-- ⏳ Input handling & keybinding dispatch
+- ⏳ Keybinding execution (match input to config keybindings)
+- ⏳ Workspace management
+- ⏳ Window decorations (title bars, buttons)
 - ⏳ Bar/panel rendering from XML
-- ⏳ JavaScript callback execution
-- ⏳ IPC for live config reloading
+- ⏳ JavaScript callback execution for window events
+- ⏳ More CSS properties (border-radius, shadows, etc.)
 - ⏳ Animation system using CSS transitions
-- ⏳ DevTools-style inspector for debugging
+- ⏳ Multi-monitor support
+- ⏳ IPC for live config reloading
+- ⏳ DRM/KMS backend for running on TTY
 
 ## 🛠️ Building
 
@@ -104,25 +112,40 @@ cd webwm
 # Build release version
 cargo build --release
 
-# Run the configuration parser (current stage)
+# Validate your configuration
 ./target/release/webwm config
 
-# Or run with cargo
-cargo run --release -- config
+# Run the compositor!
+./target/release/webwm
+
+# In another terminal, connect a client
+WAYLAND_DISPLAY=wayland-1 alacritty
+WAYLAND_DISPLAY=wayland-1 firefox
 ```
+
+### What You'll See
+
+When you run WebWM:
+1. A window opens (using winit backend for testing)
+2. The compositor starts listening for Wayland clients
+3. Connect apps using the printed `WAYLAND_DISPLAY` value
+4. Windows automatically tile according to your layout config
+5. Border colors from your CSS are applied!
 
 ### Testing Your Configuration
 
 ```bash
-# Parse and validate your config
-./target/release/webwm ./path/to/config
+# Just validate config without running compositor
+./target/release/webwm config
 
 # Save parsed config as JSON for inspection
 ./target/release/webwm config --save-json
 
-# Use the test script
-chmod +x test.sh
-./test.sh
+# Run with debug logging
+RUST_LOG=debug ./target/release/webwm
+
+# Test with Wayland protocol debugging
+WAYLAND_DEBUG=1 ./target/release/webwm
 ```
 
 ## 📝 Example Configuration

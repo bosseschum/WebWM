@@ -1,32 +1,40 @@
 [package]
 name = "webwm"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
+authors = ["WebWM Contributors"]
+license = "MIT"
+description = "A Wayland compositor configured with web technologies (XML, CSS, JavaScript)"
+repository = "https://github.com/yourusername/webwm"
 
 [dependencies]
 # Wayland compositor framework
-smithay = "0.3"
-smithay-drm = "0.3"
+smithay = { version = "0.3", default-features = false, features = ["wayland_frontend", "desktop", "renderer_gl"] }
+smithay-drm = { version = "0.3", optional = true }
 
 # Window system
 wayland-server = "0.31"
 wayland-protocols = { version = "0.31", features = ["server", "unstable"] }
 
-# Input handling
-input = "0.8"
-udev = "0.8"
-libseat = "0.2"
+# Backend - using winit for development
+winit = "0.29"
+raw-window-handle = "0.6"
 
-# Graphics
-drm = "0.10"
-gbm = "0.14"
+# Input handling (optional for full hardware backend)
+input = { version = "0.8", optional = true }
+udev = { version = "0.8", optional = true }
+libseat = { version = "0.2", optional = true }
+
+# Graphics (optional for DRM backend)
+drm = { version = "0.10", optional = true }
+gbm = { version = "0.14", optional = true }
 
 # Utilities
-slog = "2.7"
-slog-stdlog = "4.1"
-calloop = "0.12"
+calloop = { version = "0.12", features = ["block_on"] }
+log = "0.4"
+env_logger = "0.11"
 
-# Configuration pasring
+# Configuration parsing
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
@@ -34,14 +42,22 @@ serde_json = "1.0"
 roxmltree = "0.19"
 
 # CSS parsing
-lightningcss = "1.0"
 cssparser = "0.31"
 
 # JavaScript runtime
 rquickjs = { version = "0.6", features = ["array-buffer", "classes"] }
 
-# Color parsing
-rgb = "0.8"
+# Utilities
+thiserror = "1.0"
+
+[features]
+default = ["winit_backend"]
+winit_backend = []
+drm_backend = ["smithay-drm", "input", "udev", "libseat", "drm", "gbm"]
 
 [dev-dependencies]
 smithay-client-toolkit = "0.18"
+
+[[bin]]
+name = "webwm"
+path = "src/main.rs"
