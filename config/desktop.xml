@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<desktop>
+  <!-- Top bar configuration -->
+  <bar id="main-bar" position="top" height="30" class="primary-bar">
+    <workspaces display="icons" />
+    <spacer flex="1" />
+    <window-title max-width="400" />
+    <spacer flex="1" />
+    <system-tray />
+    <clock format="%H:%M %a %b %d" />
+  </bar>
+
+  <!-- Workspace definitions -->
+  <workspaces>
+    <workspace id="1" name="main" layout="tiling">
+      <split-ratio>0.6</split-ratio>
+    </workspace>
+    <workspace id="2" name="web" layout="tiling" />
+    <workspace id="3" name="code" layout="tiling" />
+    <workspace id="4" name="media" layout="floating" />
+  </workspaces>
+
+  <!-- Window rules -->
+  <window-rules>
+    <rule app-id="firefox" workspace="2" class="browser" />
+    <rule app-id="code" workspace="3" class="editor" />
+    <rule app-id="spotify" workspace="4" floating="true" class="media" />
+    <rule title="Picture-in-Picture" floating="true" sticky="true" />
+  </window-rules>
+
+  <!-- Layout configuration -->
+  <layout>
+    <tiling>
+      <gaps outer="10" inner="10" />
+      <split-mode default="auto" />
+      <master-ratio>0.55</master-ratio>
+    </tiling>
+    <floating>
+      <default-size width="800" height="600" />
+      <center-new-windows>true</center-new-windows>
+    </floating>
+  </layout>
+
+  <!-- Animations -->
+  <animations enabled="true">
+    <window-open duration="200ms" easing="ease-out" />
+    <window-close duration="150ms" easing="ease-in" />
+    <workspace-switch duration="250ms" easing="ease-in-out" />
+  </animations>
+</desktop>

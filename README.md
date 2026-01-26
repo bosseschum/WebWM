@@ -50,37 +50,48 @@ webwm/
 └── Cargo.toml
 ```
 
-## 🚀 Current Status (Prototype v0.1)
+## 🚀 Current Status (Prototype v0.2)
 
 **Implemented:**
 - ✅ Basic Wayland compositor foundation (using Smithay)
-- ✅ Configuration data structures
-- ✅ Example XML/CSS/JS configuration files
-- ✅ Config parser skeleton
+- ✅ XML parser for desktop.xml (structure definition)
+- ✅ CSS parser for style.css (theming and styling)
+- ✅ JavaScript runtime integration (rquickjs)
+- ✅ Unified configuration system
+- ✅ Keybinding registration from JS
+- ✅ Window rule parsing from XML
+- ✅ Theme extraction from CSS variables
+- ✅ Example configuration files
+
+**Currently Working:**
+The prototype successfully parses all three configuration formats and merges them into a unified configuration structure. You can run it to see your config being parsed!
 
 **TODO:**
-- ⏳ XML parser (convert desktop.xml → internal structures)
-- ⏳ CSS parser (apply styles to window decorations)
-- ⏳ JavaScript runtime (embed QuickJS or similar)
+- ⏳ Complete Smithay compositor integration
 - ⏳ Window rendering with CSS styles applied
 - ⏳ Layout algorithms (tiling, floating, etc.)
 - ⏳ Input handling & keybinding dispatch
+- ⏳ Bar/panel rendering from XML
+- ⏳ JavaScript callback execution
 - ⏳ IPC for live config reloading
+- ⏳ Animation system using CSS transitions
 - ⏳ DevTools-style inspector for debugging
 
-## 🛠️ Building (Prototype)
+## 🛠️ Building
 
 ### Prerequisites
 
 ```bash
 # Arch/Manjaro
-sudo pacman -S wayland wayland-protocols libxkbcommon mesa
+sudo pacman -S wayland wayland-protocols libxkbcommon mesa libinput libseat
 
 # Ubuntu/Debian
-sudo apt install libwayland-dev wayland-protocols libxkbcommon-dev libgles-dev
+sudo apt install libwayland-dev wayland-protocols libxkbcommon-dev \
+                 libgles-dev libinput-dev libudev-dev libseat-dev
 
 # Fedora
-sudo dnf install wayland-devel wayland-protocols-devel libxkbcommon-devel mesa-libGLES-devel
+sudo dnf install wayland-devel wayland-protocols-devel libxkbcommon-devel \
+                 mesa-libGLES-devel libinput-devel systemd-devel libseat-devel
 ```
 
 ### Compile & Run
@@ -90,11 +101,28 @@ sudo dnf install wayland-devel wayland-protocols-devel libxkbcommon-devel mesa-l
 git clone https://github.com/yourusername/webwm
 cd webwm
 
-# Build
+# Build release version
 cargo build --release
 
-# Run (currently just validates config)
-cargo run
+# Run the configuration parser (current stage)
+./target/release/webwm config
+
+# Or run with cargo
+cargo run --release -- config
+```
+
+### Testing Your Configuration
+
+```bash
+# Parse and validate your config
+./target/release/webwm ./path/to/config
+
+# Save parsed config as JSON for inspection
+./target/release/webwm config --save-json
+
+# Use the test script
+chmod +x test.sh
+./test.sh
 ```
 
 ## 📝 Example Configuration
