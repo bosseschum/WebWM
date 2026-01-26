@@ -1,0 +1,35 @@
+[package]
+name = "webwm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Wayland compositor framework
+smithay = "0.3"
+smithay-drm = "0.3"
+
+# Window system
+wayland-server = "0.31"
+wayland-protocols = { version = "0.31", features = ["server", "unstable"] }
+
+# Input handling
+input = "0.8"
+udev = "0.8"
+libseat = "0.2"
+
+# Graphics
+drm = "0.10"
+gbm = "0.14"
+
+# Utilities
+slog = "2.7"
+slog-stdlog = "4.1"
+calloop = "0.12"
+
+# For embedding web tech later
+# We'll start simple and add these as we go
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+smithay-client-toolkit = "0.18"
