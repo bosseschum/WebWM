@@ -7,25 +7,27 @@ use smithay::{
                 AsRenderElements, RenderElement,
             },
             gles::GlesRenderer,
-            Bind, Frame, Renderer,
+            Bind, Frame, Renderer, ImportMem,
         },
         winit::{self, WinitEvent, WinitGraphicsBackend},
     },
     desktop::space::SpaceElement,
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::EventLoop,
-    utils::{Rectangle, Size, Transform},
+    utils::{Rectangle, Size, Transform, Physical},
 };
 
 use crate::compositor::{WebWMCompositor, ClientState};
 use crate::compositor::input::InputHandler;
 use crate::compositor::bar_renderer::BarTextureRenderer;
+use crate::compositor::bar_element::BarRenderElement;
 
 pub struct WebWMBackend {
     pub winit: WinitGraphicsBackend<GlesRenderer>,
     pub damage_tracker: OutputDamageTracker,
     pub output: Output,
     pub input_handler: InputHandler,
+    pub bar_element: Option<BarRenderElement>,
 }
 
 impl WebWMBackend {
@@ -71,6 +73,7 @@ impl WebWMBackend {
             damage_tracker,
             output,
             input_handler: InputHandler::new(),
+            bar_element: None,
         })
     }
 
@@ -87,7 +90,7 @@ impl WebWMBackend {
         let mut renderer = self.winit.renderer();
         
         // Collect render elements from windows in active workspace only
-        let mut elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> = Vec::new();
+        let mut elements: Vec<Box<dyn RenderElement<GlesRenderer>>> = Vec::new();
 
         let active_workspace = compositor.workspace_manager.active_workspace();
         for window in &active_workspace.windows {
@@ -101,30 +104,57 @@ impl WebWMBackend {
                 1.0,
             );
             
-            elements.extend(window_elements);
+            for elem in window_elements {
+                elements.push(Box::new(elem));
+            }
         }
 
         // Render the bar
         let bar_elements = compositor.render_bar_elements();
         if !bar_elements.is_empty() {
-            // Get bar geometry (assuming top bar)
             let bar_height = compositor.bar_height();
             if bar_height > 0 {
                 // Render bar to buffer
                 let bar_renderer = BarTextureRenderer::new(size.w, bar_height);
                 let bar_buffer = bar_renderer.render_to_buffer(&bar_elements);
                 
-                // Note: In a full implementation, we would upload this buffer as a texture
-                // and render it as part of the elements. For now, we log that it would be rendered.
-                // This requires integrating with smithay's texture system more deeply.
+                let bar_size = Size::from((size.w, bar_height));
+                let bar_geometry = Rectangle::from_loc_and_size((0, 0), bar_size);
+                
+                // Create or update bar element
+                if let Some(ref mut bar_elem) = self.bar_element {
+                    // Update existing bar element
+                    if let Err(e) = bar_elem.update(&mut renderer, &bar_buffer, bar_size) {
+                        eprintln!("Failed to update bar texture: {:?}", e);
+                    } else {
+                        elements.push(Box::new(bar_elem.clone()) as Box<dyn RenderElement<GlesRenderer>>);
+                    }
+                } else {
+                    // Create new bar element
+                    match BarRenderElement::new(&mut renderer, &bar_buffer, bar_size, bar_geometry) {
+                        Ok(bar_elem) => {
+                            elements.push(Box::new(bar_elem.clone()) as Box<dyn RenderElement<GlesRenderer>>);
+                            self.bar_element = Some(bar_elem);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to create bar texture: {:?}", e);
+                        }
+                    }
+                }
             }
         }
+
+        // Convert to trait object references
+        let render_elements: Vec<&dyn RenderElement<GlesRenderer>> = elements
+            .iter()
+            .map(|e| e.as_ref() as &dyn RenderElement<GlesRenderer>)
+            .collect();
 
         // Render
         let render_res = self.damage_tracker.render_output(
             &mut renderer,
             0,
-            &elements,
+            &render_elements,
             [0.1, 0.1, 0.1, 1.0], // Background color
         );
 

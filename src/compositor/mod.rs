@@ -3,6 +3,7 @@ pub mod input;
 pub mod workspace;
 pub mod bar;
 pub mod bar_renderer;
+pub mod bar_element;
 
 use workspace::{WorkspaceManager, LayoutMode};
 use bar::{BarRenderer, BarElement};
