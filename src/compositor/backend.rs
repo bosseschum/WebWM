@@ -19,6 +19,7 @@ use smithay::{
 
 use crate::compositor::{WebWMCompositor, ClientState};
 use crate::compositor::input::InputHandler;
+use crate::compositor::bar_renderer::BarTextureRenderer;
 
 pub struct WebWMBackend {
     pub winit: WinitGraphicsBackend<GlesRenderer>,
@@ -101,6 +102,22 @@ impl WebWMBackend {
             );
             
             elements.extend(window_elements);
+        }
+
+        // Render the bar
+        let bar_elements = compositor.render_bar_elements();
+        if !bar_elements.is_empty() {
+            // Get bar geometry (assuming top bar)
+            let bar_height = compositor.bar_height();
+            if bar_height > 0 {
+                // Render bar to buffer
+                let bar_renderer = BarTextureRenderer::new(size.w, bar_height);
+                let bar_buffer = bar_renderer.render_to_buffer(&bar_elements);
+                
+                // Note: In a full implementation, we would upload this buffer as a texture
+                // and render it as part of the elements. For now, we log that it would be rendered.
+                // This requires integrating with smithay's texture system more deeply.
+            }
         }
 
         // Render

@@ -1,8 +1,11 @@
 pub mod backend;
 pub mod input;
 pub mod workspace;
+pub mod bar;
+pub mod bar_renderer;
 
 use workspace::{WorkspaceManager, LayoutMode};
+use bar::{BarRenderer, BarElement};
 
 use smithay::{
     backend::renderer::element::RenderElement,
@@ -65,6 +68,7 @@ pub struct WebWMCompositor {
     pub popup_manager: PopupManager,
     pub seat: Seat<Self>,
     pub workspace_manager: WorkspaceManager,
+    pub bar_renderer: Option<BarRenderer>,
     pub config: Config,
     pub stylesheet: Option<StyleSheet>,
 }
@@ -113,6 +117,17 @@ impl WebWMCompositor {
             }
         }
 
+        // Initialize bar renderer
+        let bar_renderer = if let Some(ref desktop) = config.desktop {
+            if !desktop.bars.is_empty() {
+                Some(BarRenderer::new(desktop.bars.clone(), 1920))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Self {
             display_handle,
             space,
@@ -126,6 +141,7 @@ impl WebWMCompositor {
             popup_manager,
             seat,
             workspace_manager,
+            bar_renderer,
             config,
             stylesheet,
         }
@@ -248,14 +264,18 @@ impl WebWMCompositor {
             return;
         }
 
+        // Account for bar height
+        let bar_height = self.bar_height();
+        let usable_height = output_size.h - bar_height;
+
         // Simple tiling: stack windows vertically
-        let available_height = output_size.h - (gaps * (window_count as i32 + 1));
+        let available_height = usable_height - (gaps * (window_count as i32 + 1));
         let window_height = available_height / window_count as i32;
         let available_width = output_size.w - (gaps * 2);
 
         for (i, window) in windows.iter().enumerate() {
             let x = gaps;
-            let y = gaps + (i as i32 * (window_height + gaps));
+            let y = bar_height + gaps + (i as i32 * (window_height + gaps));
             
             // Position the window
             self.space.map_element(window.clone(), (x, y), false);
@@ -270,16 +290,20 @@ impl WebWMCompositor {
         }
 
         let active_ws = self.workspace_manager.active_workspace();
-        println!("Relayout: {} windows in tiling mode on workspace {} (gaps: {}px)", 
-                 window_count, active_ws.id, gaps);
+        println!("Relayout: {} windows in tiling mode on workspace {} (gaps: {}px, bar_height: {}px)", 
+                 window_count, active_ws.id, gaps, bar_height);
     }
 
     fn layout_floating(&mut self, output_size: Size<i32, smithay::utils::Physical>) {
         let windows = &self.workspace_manager.active_workspace().windows;
         
+        // Account for bar height
+        let bar_height = self.bar_height();
+        let usable_height = output_size.h - bar_height;
+        
         // Floating mode: center windows with offset
         let base_x = (output_size.w - 800) / 2;
-        let base_y = (output_size.h - 600) / 2;
+        let base_y = bar_height + (usable_height - 600) / 2;
 
         for (i, window) in windows.iter().enumerate() {
             let offset = i as i32 * 30;
@@ -305,14 +329,18 @@ impl WebWMCompositor {
         let windows = &self.workspace_manager.active_workspace().windows;
         let focused_idx = self.workspace_manager.active_workspace().focused_window_idx;
         
+        // Account for bar height
+        let bar_height = self.bar_height();
+        let usable_height = output_size.h - bar_height;
+        
         // Monocle: fullscreen the focused window, hide others
         if let Some(idx) = focused_idx {
             if let Some(window) = windows.get(idx) {
-                self.space.map_element(window.clone(), (0, 0), false);
+                self.space.map_element(window.clone(), (0, bar_height), false);
                 
                 if let Some(toplevel) = window.toplevel() {
                     toplevel.with_pending_state(|state| {
-                        state.size = Some((output_size.w as u32, output_size.h as u32).into());
+                        state.size = Some((output_size.w as u32, usable_height as u32).into());
                     });
                     toplevel.send_configure();
                 }
@@ -358,6 +386,37 @@ impl WebWMCompositor {
         }
 
         self.config.layout.border_width
+    }
+
+    pub fn get_focused_window_title(&self) -> Option<String> {
+        if let Some(window) = self.workspace_manager.focused_window() {
+            if let Some(toplevel) = window.toplevel() {
+                return toplevel.title();
+            }
+        }
+        None
+    }
+
+    pub fn render_bar_elements(&self) -> Vec<BarElement> {
+        if let Some(ref bar_renderer) = self.bar_renderer {
+            let focused_title = self.get_focused_window_title();
+            bar_renderer.render_bars(
+                &self.workspace_manager,
+                focused_title,
+                self.stylesheet.as_ref(),
+            )
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub fn bar_height(&self) -> i32 {
+        if let Some(ref bar_renderer) = self.bar_renderer {
+            if let Some(bar) = bar_renderer.bars.first() {
+                return bar.height();
+            }
+        }
+        0
     }
 }
 
