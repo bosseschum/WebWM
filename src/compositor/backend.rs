@@ -7,17 +7,15 @@ use smithay::{
                 AsRenderElements, RenderElement,
             },
             gles::GlesRenderer,
-            Bind, Frame, Renderer, ImportMem,
         },
         winit::{self, WinitEvent, WinitGraphicsBackend},
     },
-    desktop::space::SpaceElement,
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::EventLoop,
-    utils::{Rectangle, Size, Transform, Physical},
+    utils::{Rectangle, Size, Transform, Physical, Scale},
 };
 
-use crate::compositor::{WebWMCompositor, ClientState};
+use crate::compositor::WebWMCompositor;
 use crate::compositor::input::InputHandler;
 use crate::compositor::bar_renderer::BarTextureRenderer;
 use crate::compositor::bar_element::BarRenderElement;
@@ -52,10 +50,10 @@ impl WebWMBackend {
             subpixel: Subpixel::Unknown,
             make: "WebWM".into(),
             model: "Virtual".into(),
+            serial_number: None,
         };
 
         let output = Output::new("WebWM-1".into(), physical_properties);
-        output.create_global::<WebWMCompositor>(&backend.display().handle());
         output.change_current_state(Some(mode), Some(Transform::Flipped180), None, Some((0, 0).into()));
         output.set_preferred(mode);
 
@@ -82,7 +80,7 @@ impl WebWMBackend {
         compositor: &mut WebWMCompositor,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let size = self.winit.window_size();
-        let scale = smithay::output::Scale::Integer(1);
+        let scale = Scale::from(1.0);
 
         // Bind the renderer
         self.winit.bind()?;

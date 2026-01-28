@@ -1,13 +1,13 @@
 mod config;
 mod compositor;
-mod backend;
+mod state;
 
-use config::Config;
+use crate::compositor::input::InputHandler;
 use compositor::{WebWMCompositor, ClientState};
-use backend::WebWMBackend;
+use crate::compositor::backend::WebWMBackend;
 
 use smithay::reexports::{
-    wayland_server::{Display, DisplayHandle},
+    wayland_server::Display,
     calloop::timer::{Timer, TimeoutAction},
 };
 use std::env;
@@ -88,6 +88,7 @@ fn run_config_mode(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
             config::Action::Close => "close window".to_string(),
             config::Action::Focus { direction } => format!("focus {}", direction),
             config::Action::Move { workspace } => format!("move to workspace {}", workspace),
+            config::Action::SwitchWorkspace { workspace } => format!("switch to workspace {}", workspace),
             config::Action::ToggleFloating => "toggle floating".to_string(),
             config::Action::Custom { js } => format!("execute JS: {}", js),
         };
@@ -128,7 +129,7 @@ fn run_compositor() -> Result<(), Box<dyn std::error::Error>> {
     println!();
     
     // Create event loop first
-    let event_loop = smithay::reexports::calloop::EventLoop::try_new()?;
+    let mut event_loop = smithay::reexports::calloop::EventLoop::try_new()?;
     
     // Create Wayland display
     let mut display = Display::<WebWMCompositor>::new()?;
@@ -180,7 +181,7 @@ fn run_compositor() -> Result<(), Box<dyn std::error::Error>> {
     event_loop
         .handle()
         .insert_source(socket, {
-            let dh = display.handle();
+            let mut dh = display.handle();
             move |client_stream, _, _| {
                 if let Err(e) = dh.insert_client(
                     client_stream,

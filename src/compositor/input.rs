@@ -1,17 +1,15 @@
-use smithay::{
-    backend::input::{
-        Event, InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent, 
-        PointerButtonEvent, PointerMotionEvent,
-    },
-    input::{
-        keyboard::{keysyms, ModifiersState, XkbConfig},
-        pointer::{AxisFrame, ButtonEvent, MotionEvent},
-    },
-    utils::{Logical, Point, SERIAL_COUNTER},
+use smithay::backend::input::{
+    InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent, 
+    PointerButtonEvent, PointerMotionEvent, Axis, InputBackend,
 };
+use smithay::input::{
+    keyboard::{keysyms, ModifiersState},
+    pointer::{AxisFrame, ButtonEvent, MotionEvent},
+};
+use smithay::utils::{Logical, Point, SERIAL_COUNTER};
 use std::process::Command;
 
-use crate::config::{Action, Keybinding};
+use crate::config::Action;
 use crate::compositor::WebWMCompositor;
 
 // Key modifier flags
@@ -69,9 +67,9 @@ impl InputHandler {
         }
     }
 
-    pub fn process_input_event(
+    pub fn process_input_event<B: InputBackend>(
         &mut self,
-        event: InputEvent<impl InputEvent>,
+        event: InputEvent<B>,
         compositor: &mut WebWMCompositor,
     ) {
         match event {
@@ -91,9 +89,9 @@ impl InputHandler {
         }
     }
 
-    fn handle_keyboard(
+    fn handle_keyboard<B: InputBackend>(
         &mut self,
-        event: impl KeyboardKeyEvent,
+        event: impl KeyboardKeyEvent<B>,
         compositor: &mut WebWMCompositor,
     ) {
         let keycode = event.key_code();
@@ -245,9 +243,9 @@ impl InputHandler {
         }
     }
 
-    fn handle_pointer_motion(
+    fn handle_pointer_motion<B: InputBackend>(
         &mut self,
-        event: impl PointerMotionEvent,
+        event: impl PointerMotionEvent<B>,
         compositor: &mut WebWMCompositor,
     ) {
         let delta = event.delta();
@@ -291,9 +289,9 @@ impl InputHandler {
         }
     }
 
-    fn handle_pointer_button(
+    fn handle_pointer_button<B: InputBackend>(
         &mut self,
-        event: impl PointerButtonEvent,
+        event: impl PointerButtonEvent<B>,
         compositor: &mut WebWMCompositor,
     ) {
         let button = event.button_code();
@@ -333,20 +331,20 @@ impl InputHandler {
         }
     }
 
-    fn handle_pointer_axis(
+    fn handle_pointer_axis<B: InputBackend>(
         &mut self,
-        event: impl PointerAxisEvent,
+        event: impl PointerAxisEvent<B>,
         compositor: &mut WebWMCompositor,
     ) {
         if let Some(pointer) = compositor.seat.get_pointer() {
-            let horizontal = event.amount(smithay::backend::input::Axis::Horizontal)
+            let horizontal = event.amount(Axis::Horizontal)
                 .unwrap_or(0.0);
-            let vertical = event.amount(smithay::backend::input::Axis::Vertical)
+            let vertical = event.amount(Axis::Vertical)
                 .unwrap_or(0.0);
 
             let frame = AxisFrame::new(0)
-                .value(smithay::input::pointer::Axis::Horizontal, horizontal)
-                .value(smithay::input::pointer::Axis::Vertical, vertical);
+                .value(Axis::Horizontal, horizontal)
+                .value(Axis::Vertical, vertical);
 
             pointer.axis(compositor, frame);
         }

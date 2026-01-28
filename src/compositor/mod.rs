@@ -9,49 +9,37 @@ use workspace::{WorkspaceManager, LayoutMode};
 use bar::{BarRenderer, BarElement};
 
 use smithay::{
-    backend::renderer::element::RenderElement,
-    delegate_compositor, delegate_data_device, delegate_output, delegate_seat,
+    delegate_compositor, delegate_output, delegate_seat,
     delegate_shm, delegate_xdg_shell,
     desktop::{
-        PopupKind, PopupManager, Space, Window, WindowSurfaceType,
+        PopupKind, PopupManager, Space, Window,
     },
     input::{
-        keyboard::{KeyboardTarget, KeysymHandle, ModifiersState},
-        pointer::{AxisFrame, ButtonEvent, MotionEvent, PointerTarget},
+        keyboard::ModifiersState,
+        pointer::CursorImageStatus,
         Seat, SeatHandler, SeatState,
     },
-    output::Output,
     reexports::{
         calloop::LoopHandle,
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::{wl_seat, wl_surface::WlSurface},
-            Client, Display, DisplayHandle, Resource,
+            Client, Display, DisplayHandle,
         },
     },
-    utils::{Clock, Monotonic, Rectangle, Size},
+    utils::{Clock, Monotonic, Size, Serial},
     wayland::{
         buffer::BufferHandler,
         compositor::{
-            get_parent, is_sync_subsurface, CompositorClientState, CompositorHandler,
+            CompositorClientState, CompositorHandler,
             CompositorState,
         },
-        data_device::{
-            ClientDndGrabHandler, DataDeviceHandler, ServerDndGrabHandler,
-        },
-        output::OutputManagerState,
-        seat::WaylandFocus,
+        output::{OutputHandler, OutputManagerState},
         shell::xdg::{
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
-            XdgToplevelSurfaceData,
         },
         shm::{ShmHandler, ShmState},
-        socket::ListeningSocketSource,
     },
-};
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
 };
 
 use crate::config::{Config, StyleSheet};
@@ -64,7 +52,6 @@ pub struct WebWMCompositor {
     pub xdg_shell_state: XdgShellState,
     pub shm_state: ShmState,
     pub seat_state: SeatState<Self>,
-    pub data_device_state: smithay::wayland::data_device::DataDeviceState,
     pub output_manager_state: OutputManagerState,
     pub popup_manager: PopupManager,
     pub seat: Seat<Self>,
@@ -77,7 +64,7 @@ pub struct WebWMCompositor {
 impl WebWMCompositor {
     pub fn new(
         display: &mut Display<Self>,
-        loop_handle: LoopHandle<'static, Self>,
+        _loop_handle: LoopHandle<'static, Self>,
         config: Config,
     ) -> Self {
         let display_handle = display.handle();
@@ -89,7 +76,6 @@ impl WebWMCompositor {
         let shm_state = ShmState::new::<Self>(&display_handle, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display_handle);
         let mut seat_state = SeatState::new();
-        let data_device_state = smithay::wayland::data_device::DataDeviceState::new::<Self>(&display_handle);
 
         // Create seat (keyboard and pointer)
         let mut seat = seat_state.new_wl_seat(&display_handle, "seat-0");
@@ -109,7 +95,7 @@ impl WebWMCompositor {
         if let Some(ref desktop) = config.desktop {
             for ws_config in &desktop.workspaces {
                 let layout_mode = LayoutMode::from(ws_config.layout.as_str());
-                let mut workspace = workspace::Workspace::new(
+                let workspace = workspace::Workspace::new(
                     ws_config.id,
                     ws_config.name.clone(),
                     layout_mode,
@@ -137,7 +123,6 @@ impl WebWMCompositor {
             xdg_shell_state,
             shm_state,
             seat_state,
-            data_device_state,
             output_manager_state,
             popup_manager,
             seat,
@@ -178,7 +163,10 @@ impl WebWMCompositor {
 
     fn get_target_workspace_for_window(&self, window: &Window) -> Option<u32> {
         if let Some(surface) = window.toplevel() {
-            let app_id = surface.app_id().unwrap_or_default();
+            // Get app_id via with_pending_state
+            let app_id = surface.with_pending_state(|state| {
+                state.app_id.clone()
+            }).unwrap_or_default();
             
             // Check window rules for workspace assignment
             for rule in &self.config.window_rules {
@@ -194,7 +182,10 @@ impl WebWMCompositor {
 
     fn apply_window_rules(&self, window: &Window) {
         if let Some(surface) = window.toplevel() {
-            let app_id = surface.app_id().unwrap_or_default();
+            // Get app_id via with_pending_state
+            let app_id = surface.with_pending_state(|state| {
+                state.app_id.clone()
+            }).unwrap_or_default();
             
             // Check config for matching rules
             for rule in &self.config.window_rules {
@@ -203,17 +194,14 @@ impl WebWMCompositor {
                     
                     if let Some(workspace) = rule.workspace {
                         println!("  → Would move to workspace {}", workspace);
-                        // TODO: Implement workspace management
                     }
                     
                     if let Some(floating) = rule.floating {
                         println!("  → Would set floating = {}", floating);
-                        // TODO: Implement floating mode
                     }
                     
                     if let Some(ref class) = rule.css_class {
                         println!("  → Would apply CSS class: {}", class);
-                        // TODO: Apply CSS styling
                     }
                 }
             }
@@ -225,7 +213,7 @@ impl WebWMCompositor {
         let windows = self.workspace_manager.active_workspace().windows.clone();
         
         if let Some(window) = windows.iter()
-            .find(|w| w.toplevel().map(|t| &t == toplevel).unwrap_or(false))
+            .find(|w| w.toplevel().map(|t| t == *toplevel).unwrap_or(false))
             .cloned()
         {
             self.space.unmap_elem(&window);
@@ -268,23 +256,20 @@ impl WebWMCompositor {
         // Account for bar height
         let bar_height = self.bar_height();
         let usable_height = output_size.h - bar_height;
-
-        // Simple tiling: stack windows vertically
-        let available_height = usable_height - (gaps * (window_count as i32 + 1));
-        let window_height = available_height / window_count as i32;
-        let available_width = output_size.w - (gaps * 2);
+        
+        // Simple tiling: split screen vertically
+        let window_width = (output_size.w - (gaps * (window_count as i32 + 1))) / window_count as i32;
+        let window_height = usable_height - (gaps * 2);
 
         for (i, window) in windows.iter().enumerate() {
-            let x = gaps;
-            let y = bar_height + gaps + (i as i32 * (window_height + gaps));
+            let x = gaps + (i as i32 * (window_width + gaps));
+            let y = bar_height + gaps;
             
-            // Position the window
             self.space.map_element(window.clone(), (x, y), false);
             
-            // Request window to resize
             if let Some(toplevel) = window.toplevel() {
                 toplevel.with_pending_state(|state| {
-                    state.size = Some((available_width as u32, window_height as u32).into());
+                    state.size = Some((window_width as i32, window_height as i32).into());
                 });
                 toplevel.send_configure();
             }
@@ -341,7 +326,7 @@ impl WebWMCompositor {
                 
                 if let Some(toplevel) = window.toplevel() {
                     toplevel.with_pending_state(|state| {
-                        state.size = Some((output_size.w as u32, usable_height as u32).into());
+                        state.size = Some((output_size.w as i32, usable_height as i32).into());
                     });
                     toplevel.send_configure();
                 }
@@ -360,7 +345,7 @@ impl WebWMCompositor {
         // Execute corresponding actions
     }
 
-    pub fn get_border_color(&self, window: &Window, focused: bool) -> [f32; 4] {
+    pub fn get_border_color(&self, _window: &Window, focused: bool) -> [f32; 4] {
         if let Some(ref stylesheet) = self.stylesheet {
             let selector = if focused { "window:focus" } else { "window" };
             
@@ -392,7 +377,10 @@ impl WebWMCompositor {
     pub fn get_focused_window_title(&self) -> Option<String> {
         if let Some(window) = self.workspace_manager.focused_window() {
             if let Some(toplevel) = window.toplevel() {
-                return toplevel.title();
+                // Get title via with_pending_state
+                return toplevel.with_pending_state(|state| {
+                    state.title.clone()
+                });
             }
         }
         None
@@ -439,12 +427,11 @@ delegate_compositor!(WebWMCompositor);
 delegate_xdg_shell!(WebWMCompositor);
 delegate_shm!(WebWMCompositor);
 delegate_seat!(WebWMCompositor);
-delegate_data_device!(WebWMCompositor);
 delegate_output!(WebWMCompositor);
 
 // Implement required traits
 impl BufferHandler for WebWMCompositor {
-    fn buffer_destroyed(&mut self, _buffer: &smithay::wayland::buffer::Buffer) {}
+    fn buffer_destroyed(&mut self, _buffer: &wayland_server::protocol::wl_buffer::WlBuffer) {}
 }
 
 impl CompositorHandler for WebWMCompositor {
@@ -457,7 +444,8 @@ impl CompositorHandler for WebWMCompositor {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
-        self.space.commit(surface);
+        // Note: Space::commit() has been removed in newer Smithay versions
+        // The commit is now handled automatically by the compositor state
         self.popup_manager.commit(surface);
     }
 }
@@ -477,11 +465,15 @@ impl XdgShellHandler for WebWMCompositor {
         self.remove_window(&surface);
     }
 
-    fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
+    fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
         self.popup_manager.track_popup(PopupKind::Xdg(surface)).ok();
     }
 
-    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: smithay::utils::Serial) {
+    fn reposition_request(&mut self, _surface: PopupSurface, _positioner: PositionerState, _token: u32) {
+        // Handle popup reposition requests
+    }
+
+    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
         // Handle popup grabs
     }
 }
@@ -501,26 +493,20 @@ impl SeatHandler for WebWMCompositor {
         &mut self.seat_state
     }
 
-    fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
+    fn focus_changed(&mut self, _seat: &Seat<Self>, focused: Option<&WlSurface>) {
         // Handle focus changes
-        if let Some(surface) = focused {
+        if let Some(_surface) = focused {
             println!("Focus changed to surface");
         }
     }
 
-    fn cursor_image(&mut self, seat: &Seat<Self>, image: smithay::input::pointer::CursorImageStatus) {
+    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: CursorImageStatus) {
         // Handle cursor image changes
     }
 }
 
-impl DataDeviceHandler for WebWMCompositor {
-    fn data_device_state(&self) -> &smithay::wayland::data_device::DataDeviceState {
-        &self.data_device_state
-    }
-}
-
-impl ClientDndGrabHandler for WebWMCompositor {}
-impl ServerDndGrabHandler for WebWMCompositor {}
+// Implement OutputHandler trait (required for delegate_output!)
+impl OutputHandler for WebWMCompositor {}
 
 pub struct ClientState {
     pub compositor_state: CompositorClientState,

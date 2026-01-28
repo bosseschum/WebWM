@@ -64,49 +64,22 @@ impl JSRuntime {
                 .map_err(|e| format!("Failed to create wm object: {:?}", e))?;
             
             // Add wm methods
-            self.add_wm_methods(&wm)?;
+            self.add_wm_methods(ctx.clone(), &wm)?;
             
             globals.set("wm", wm)
                 .map_err(|e| format!("Failed to set wm global: {:?}", e))?;
             
             // Add utility functions
-            self.add_utility_functions(&globals)?;
+            self.add_utility_functions(ctx.clone(), &globals)?;
             
-            // wm.switchToWorkspace(workspace)
-        wm.set("switchToWorkspace", Function::new(
-            self.context.clone(),
-            |ws: u32| {
-                println!("JS: switchToWorkspace({})", ws);
-            }
-        )).map_err(|e| format!("Failed to set switchToWorkspace: {:?}", e))?;
-        
-        // wm.cycleWorkspaceNext()
-        wm.set("cycleWorkspaceNext", Function::new(
-            self.context.clone(),
-            || {
-                println!("JS: cycleWorkspaceNext()");
-            }
-        )).map_err(|e| format!("Failed to set cycleWorkspaceNext: {:?}", e))?;
-        
-        // wm.cycleWorkspacePrev()
-        wm.set("cycleWorkspacePrev", Function::new(
-            self.context.clone(),
-            || {
-                println!("JS: cycleWorkspacePrev()");
-            }
-        )).map_err(|e| format!("Failed to set cycleWorkspacePrev: {:?}", e))?;
-        
-        Ok(())
+            Ok(())
         })
     }
     
-    fn add_wm_methods(&self, wm: &Object) -> Result<(), String> {
-        // These would be actual implementations
-        // For now, we'll store them as callbacks
-        
+    fn add_wm_methods(&self, ctx: rquickjs::Ctx<'_>, wm: &Object) -> Result<(), String> {
         // wm.spawn(command)
         wm.set("spawn", Function::new(
-            self.context.clone(),
+            ctx.clone(),
             |cmd: String| {
                 println!("JS: spawn({})", cmd);
                 // Would actually spawn process
@@ -115,7 +88,7 @@ impl JSRuntime {
         
         // wm.close()
         wm.set("close", Function::new(
-            self.context.clone(),
+            ctx.clone(),
             || {
                 println!("JS: close()");
                 // Would close focused window
@@ -124,7 +97,7 @@ impl JSRuntime {
         
         // wm.focus(direction)
         wm.set("focus", Function::new(
-            self.context.clone(),
+            ctx.clone(),
             |dir: String| {
                 println!("JS: focus({})", dir);
                 // Would focus in direction
@@ -133,7 +106,7 @@ impl JSRuntime {
         
         // wm.moveToWorkspace(workspace)
         wm.set("moveToWorkspace", Function::new(
-            self.context.clone(),
+            ctx.clone(),
             |ws: u32| {
                 println!("JS: moveToWorkspace({})", ws);
             }
@@ -141,15 +114,31 @@ impl JSRuntime {
         
         // wm.switchToWorkspace(workspace)
         wm.set("switchToWorkspace", Function::new(
-            self.context.clone(),
+            ctx.clone(),
             |ws: u32| {
                 println!("JS: switchToWorkspace({})", ws);
             }
         )).map_err(|e| format!("Failed to set switchToWorkspace: {:?}", e))?;
         
+        // wm.cycleWorkspaceNext()
+        wm.set("cycleWorkspaceNext", Function::new(
+            ctx.clone(),
+            || {
+                println!("JS: cycleWorkspaceNext()");
+            }
+        )).map_err(|e| format!("Failed to set cycleWorkspaceNext: {:?}", e))?;
+        
+        // wm.cycleWorkspacePrev()
+        wm.set("cycleWorkspacePrev", Function::new(
+            ctx.clone(),
+            || {
+                println!("JS: cycleWorkspacePrev()");
+            }
+        )).map_err(|e| format!("Failed to set cycleWorkspacePrev: {:?}", e))?;
+        
         // wm.toggleFloating()
         wm.set("toggleFloating", Function::new(
-            self.context.clone(),
+            ctx,
             || {
                 println!("JS: toggleFloating()");
             }
@@ -158,12 +147,12 @@ impl JSRuntime {
         Ok(())
     }
     
-    fn add_utility_functions(&self, globals: &Object) -> Result<(), String> {
+    fn add_utility_functions(&self, ctx: rquickjs::Ctx<'_>, globals: &Object) -> Result<(), String> {
         let keybindings = self.keybindings.clone();
         
         // keybind(combo, callback)
         globals.set("keybind", Function::new(
-            self.context.clone(),
+            ctx.clone(),
             move |combo: String, callback: Function| {
                 println!("Registering keybinding: {}", combo);
                 
@@ -188,7 +177,7 @@ impl JSRuntime {
         
         // onWindowCreate(callback)
         globals.set("onWindowCreate", Function::new(
-            self.context.clone(),
+            ctx.clone(),
             move |callback: Function| {
                 println!("Registered window create handler");
                 if let Ok(mut handlers) = window_handlers.lock() {
@@ -202,7 +191,7 @@ impl JSRuntime {
         
         // onMouseEnter(callback)
         globals.set("onMouseEnter", Function::new(
-            self.context.clone(),
+            ctx.clone(),
             |callback: Function| {
                 println!("Registered mouse enter handler");
             }
@@ -210,7 +199,7 @@ impl JSRuntime {
         
         // notify(options)
         globals.set("notify", Function::new(
-            self.context.clone(),
+            ctx.clone(),
             |options: Object| {
                 println!("JS: notify()");
                 // Would send notification
@@ -221,7 +210,7 @@ impl JSRuntime {
         
         // onStartup(callback)
         globals.set("onStartup", Function::new(
-            self.context.clone(),
+            ctx,
             move |callback: Function| {
                 println!("Registered startup handler");
                 if let Ok(mut handlers) = startup_handlers.lock() {

@@ -1,8 +1,7 @@
-use smithay::backend::renderer::gles::GlesTexture;
 use smithay::utils::{Physical, Rectangle, Size};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::config::xml_parser::{BarConfig, Widget, Position};
+use crate::config::{BarConfig, Widget, Position};
 use crate::config::StyleSheet;
 use crate::compositor::workspace::WorkspaceManager;
 
@@ -125,7 +124,7 @@ impl BarRenderer {
         stylesheet: Option<&StyleSheet>,
     ) -> Vec<BarElement> {
         match widget {
-            Widget::Workspaces { display } => {
+            Widget::Workspaces { display: _ } => {
                 self.render_workspaces(workspace_manager, x_offset, y, text_color, stylesheet)
             }
             Widget::WindowTitle { max_width } => {
