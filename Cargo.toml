@@ -9,7 +9,7 @@ repository = "https://github.com/bosseschum/webwm"
 
 [dependencies]
 # Wayland compositor framework - UPDATED to working version
-smithay = { git = "https://github.com/Smithay/smithay", features = ["backend_winit", "wayland_frontend", "desktop", "renderer_glow"] }
+smithay = { git = "https://github.com/Smithay/smithay", features = ["backend_winit", "backend_libinput", "backend_drm", "backend_udev", "wayland_frontend", "desktop", "renderer_glow"] }
 
 # Window system
 wayland-server = "0.31"

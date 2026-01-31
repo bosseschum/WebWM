@@ -157,43 +157,5 @@ onStartup(() => {
   console.log('WebWM started successfully!');
 });
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-function keybind(combo, action) {
-  // This would register with the Rust backend
-  // For now, just log it
-  console.log(`Registered keybinding: ${combo}`);
-}
-
-function onWindowCreate(handler) {
-  // Hook into window creation events
-  console.log('Registered window creation handler');
-}
-
-function onMouseEnter(handler) {
-  console.log('Registered mouse enter handler');
-}
-
-function onMouseLeave(handler) {
-  console.log('Registered mouse leave handler');
-}
-
-function onLayoutChange(handler) {
-  console.log('Registered layout change handler');
-}
-
-function onWindowUrgent(handler) {
-  console.log('Registered urgent window handler');
-}
-
-function onStartup(handler) {
-  console.log('Registered startup handler');
-  // Execute immediately in this context
-  handler();
-}
-
-function notify(options) {
-  console.log('Notification:', options);
-}
+// HELPER FUNCTIONS ARE PROVIDED BY RUST BACKEND
+// keybind(), onWindowCreate(), onMouseEnter(), onMouseLeave(), onLayoutChange(), onWindowUrgent(), onStartup(), notify()

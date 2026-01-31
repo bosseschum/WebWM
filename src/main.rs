@@ -163,7 +163,7 @@ fn run_compositor() -> Result<(), Box<dyn std::error::Error>> {
     println!("===========================================");
     println!("\nWayland socket: {}", socket_name);
     println!("\nTo connect a client, run:");
-    println!("  WAYLAND_DISPLAY={} alacritty", socket_name);
+    println!("  WAYLAND_DISPLAY={} kitty", socket_name);
     println!("  WAYLAND_DISPLAY={} weston-terminal", socket_name);
     println!("\nKeybindings active:");
     for kb in compositor.config.keybindings.iter().take(5) {

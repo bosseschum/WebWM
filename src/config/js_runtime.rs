@@ -71,6 +71,23 @@ impl JSRuntime {
                 .set("wm", wm)
                 .map_err(|e| format!("Failed to set wm global: {:?}", e))?;
 
+            // Add console object
+            let console = Object::new(ctx.clone())
+                .map_err(|e| format!("Failed to create console object: {:?}", e))?;
+
+            console
+                .set(
+                    "log",
+                    Function::new(ctx.clone(), |msg: String| {
+                        println!("JS: {}", msg);
+                    }),
+                )
+                .map_err(|e| format!("Failed to set console.log: {:?}", e))?;
+
+            globals
+                .set("console", console)
+                .map_err(|e| format!("Failed to set console global: {:?}", e))?;
+
             // Add utility functions
             self.add_utility_functions(ctx.clone(), &globals)?;
 
@@ -148,11 +165,67 @@ impl JSRuntime {
         // wm.toggleFloating()
         wm.set(
             "toggleFloating",
-            Function::new(ctx, || {
+            Function::new(ctx.clone(), || {
                 println!("JS: toggleFloating()");
             }),
         )
         .map_err(|e| format!("Failed to set toggleFloating: {:?}", e))?;
+
+        // wm.toggleMaximize()
+        wm.set(
+            "toggleMaximize",
+            Function::new(ctx.clone(), || {
+                println!("JS: toggleMaximize()");
+            }),
+        )
+        .map_err(|e| format!("Failed to set toggleMaximize: {:?}", e))?;
+
+        // wm.moveWindow(direction)
+        wm.set(
+            "moveWindow",
+            Function::new(ctx.clone(), |dir: String| {
+                println!("JS: moveWindow({})", dir);
+            }),
+        )
+        .map_err(|e| format!("Failed to set moveWindow: {:?}", e))?;
+
+        // wm.setLayout(layout)
+        wm.set(
+            "setLayout",
+            Function::new(ctx.clone(), |layout: String| {
+                println!("JS: setLayout({})", layout);
+            }),
+        )
+        .map_err(|e| format!("Failed to set setLayout: {:?}", e))?;
+
+        // wm.cycleLayout()
+        wm.set(
+            "cycleLayout",
+            Function::new(ctx.clone(), || {
+                println!("JS: cycleLayout()");
+            }),
+        )
+        .map_err(|e| format!("Failed to set cycleLayout: {:?}", e))?;
+
+        // wm.reload()
+        wm.set(
+            "reload",
+            Function::new(ctx.clone(), || {
+                println!("JS: reload()");
+                // Would reload configuration
+            }),
+        )
+        .map_err(|e| format!("Failed to set reload: {:?}", e))?;
+
+        // wm.exit()
+        wm.set(
+            "exit",
+            Function::new(ctx, || {
+                println!("JS: exit()");
+                // Would exit the compositor
+            }),
+        )
+        .map_err(|e| format!("Failed to set exit: {:?}", e))?;
 
         Ok(())
     }
@@ -207,6 +280,46 @@ impl JSRuntime {
         globals
             .set(
                 "onMouseEnter",
+                Function::new(ctx.clone(), move |_callback: Function| {
+                    println!("Registered mouse enter handler");
+                }),
+            )
+            .map_err(|e| format!("Failed to set onMouseEnter: {:?}", e))?;
+
+        // onMouseLeave(callback)
+        globals
+            .set(
+                "onMouseLeave",
+                Function::new(ctx.clone(), move |_callback: Function| {
+                    println!("Registered mouse leave handler");
+                }),
+            )
+            .map_err(|e| format!("Failed to set onMouseLeave: {:?}", e))?;
+
+        // onLayoutChange(callback)
+        globals
+            .set(
+                "onLayoutChange",
+                Function::new(ctx.clone(), move |_callback: Function| {
+                    println!("Registered layout change handler");
+                }),
+            )
+            .map_err(|e| format!("Failed to set onLayoutChange: {:?}", e))?;
+
+        // onWindowUrgent(callback)
+        globals
+            .set(
+                "onWindowUrgent",
+                Function::new(ctx.clone(), move |_callback: Function| {
+                    println!("Registered urgent window handler");
+                }),
+            )
+            .map_err(|e| format!("Failed to set onWindowUrgent: {:?}", e))?;
+
+        // onMouseEnter(callback)
+        globals
+            .set(
+                "onMouseEnter",
                 Function::new(ctx.clone(), |callback: Function| {
                     println!("Registered mouse enter handler");
                 }),
@@ -248,9 +361,23 @@ impl JSRuntime {
 
     pub fn evaluate(&self, js_code: &str) -> Result<(), String> {
         self.context.with(|ctx| {
-            ctx.eval::<Value, _>(js_code)
-                .map_err(|e| format!("JS evaluation error: {:?}", e))?;
-            Ok(())
+            match ctx.eval::<Value, _>(js_code) {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    // Try to get more detailed error information
+                    let error_msg = format!("JS evaluation error: {:?}", e);
+                    eprintln!("JavaScript Error Details:");
+                    eprintln!("  Error: {:?}", e);
+                    eprintln!("  Code length: {} characters", js_code.len());
+                    // Show first few lines of code that might be causing issues
+                    let lines: Vec<&str> = js_code.lines().take(10).collect();
+                    eprintln!("  Code preview (first 10 lines):");
+                    for (i, line) in lines.iter().enumerate() {
+                        eprintln!("    {}: {}", i + 1, line);
+                    }
+                    Err(error_msg)
+                }
+            }
         })
     }
 

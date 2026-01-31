@@ -118,6 +118,8 @@ fn load_web_config(
 
     // Load and execute JavaScript
     let js_content = fs::read_to_string(js_path)?;
+
+    // Create and initialize JavaScript runtime
     let js_runtime = JSRuntime::new()?;
     js_runtime.init_api()?;
     js_runtime.evaluate(&js_content)?;
@@ -201,7 +203,7 @@ fn default_config() -> Config {
                 key: "Return".to_string(),
                 modifiers: vec!["Super".to_string()],
                 action: Action::Spawn {
-                    command: "alacritty".to_string(),
+                    command: "kitty".to_string(),
                 },
             },
             Keybinding {
