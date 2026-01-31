@@ -1,9 +1,9 @@
 use smithay::utils::{Physical, Rectangle, Size};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::config::{BarConfig, Widget, Position};
-use crate::config::StyleSheet;
 use crate::compositor::workspace::WorkspaceManager;
+use crate::config::StyleSheet;
+use crate::config::{BarConfig, Position, Widget};
 
 #[derive(Debug, Clone)]
 pub struct Bar {
@@ -15,14 +15,14 @@ impl Bar {
     pub fn new(config: BarConfig, output_width: i32) -> Self {
         let height = config.height as i32;
         let width = output_width;
-        
+
         let geometry = match config.position {
             Position::Top => Rectangle::from_loc_and_size((0, 0), (width, height)),
             Position::Bottom => Rectangle::from_loc_and_size((0, 1080 - height), (width, height)),
             Position::Left => Rectangle::from_loc_and_size((0, 0), (height, 1080)),
             Position::Right => Rectangle::from_loc_and_size((width - height, 0), (height, 1080)),
         };
-        
+
         Self { config, geometry }
     }
 
@@ -48,7 +48,7 @@ impl BarRenderer {
             .into_iter()
             .map(|config| Bar::new(config, output_width))
             .collect();
-        
+
         Self { bars }
     }
 
@@ -61,7 +61,12 @@ impl BarRenderer {
         let mut elements = Vec::new();
 
         for bar in &self.bars {
-            elements.extend(self.render_bar(bar, workspace_manager, focused_window_title.clone(), stylesheet));
+            elements.extend(self.render_bar(
+                bar,
+                workspace_manager,
+                focused_window_title.clone(),
+                stylesheet,
+            ));
         }
 
         elements
@@ -79,10 +84,12 @@ impl BarRenderer {
 
         // Get colors from stylesheet or use defaults
         let (bg_color, text_color) = if let Some(ss) = stylesheet {
-            let bg = ss.get_color(&bar.config.class, "background")
+            let bg = ss
+                .get_color(&bar.config.class, "background")
                 .map(|c| c.to_rgba_f32())
                 .unwrap_or([0.11, 0.11, 0.18, 0.95]);
-            let fg = ss.get_color(&bar.config.class, "color")
+            let fg = ss
+                .get_color(&bar.config.class, "color")
                 .map(|c| c.to_rgba_f32())
                 .unwrap_or([0.8, 0.83, 0.96, 1.0]);
             (bg, fg)
@@ -130,9 +137,7 @@ impl BarRenderer {
             Widget::WindowTitle { max_width } => {
                 self.render_window_title(focused_window_title, x_offset, y, *max_width, text_color)
             }
-            Widget::Clock { format } => {
-                self.render_clock(format, x_offset, y, text_color)
-            }
+            Widget::Clock { format } => self.render_clock(format, x_offset, y, text_color),
             Widget::SystemTray => {
                 // TODO: Implement system tray
                 Vec::new()
@@ -162,15 +167,18 @@ impl BarRenderer {
             // Get colors from stylesheet
             let (bg_color, fg_color) = if let Some(ss) = stylesheet {
                 if is_active {
-                    let bg = ss.get_color("workspace.active", "background")
+                    let bg = ss
+                        .get_color("workspace.active", "background")
                         .map(|c| c.to_rgba_f32())
                         .unwrap_or([0.54, 0.71, 0.98, 1.0]); // Blue
-                    let fg = ss.get_color("workspace.active", "color")
+                    let fg = ss
+                        .get_color("workspace.active", "color")
                         .map(|c| c.to_rgba_f32())
                         .unwrap_or([0.11, 0.11, 0.18, 1.0]); // Dark
                     (bg, fg)
                 } else if has_windows {
-                    let bg = ss.get_color("workspace", "background")
+                    let bg = ss
+                        .get_color("workspace", "background")
                         .map(|c| c.to_rgba_f32())
                         .unwrap_or([0.19, 0.20, 0.27, 1.0]); // Gray
                     (bg, text_color)
@@ -324,8 +332,9 @@ fn format_time(format: &str) -> String {
     let weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     let weekday = weekdays[(days_since_epoch % 7) as usize];
 
-    let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let months = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
     let month_name = months[(month.saturating_sub(1) % 12) as usize];
 
     // Replace format specifiers
@@ -349,7 +358,7 @@ mod tests {
     fn test_time_formatting() {
         let time = format_time("%H:%M");
         assert!(time.contains(":"));
-        
+
         let time = format_time("%H:%M:%S");
         assert_eq!(time.matches(":").count(), 2);
     }

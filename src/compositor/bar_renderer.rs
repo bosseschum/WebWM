@@ -26,10 +26,19 @@ impl BarTextureRenderer {
                 BarElement::Rectangle { geometry, color } => {
                     self.draw_rectangle(&mut buffer, geometry, *color);
                 }
-                BarElement::Circle { center, radius, color } => {
+                BarElement::Circle {
+                    center,
+                    radius,
+                    color,
+                } => {
                     self.draw_circle(&mut buffer, *center, *radius, *color);
                 }
-                BarElement::Text { position, text, color, size } => {
+                BarElement::Text {
+                    position,
+                    text,
+                    color,
+                    size,
+                } => {
                     self.draw_text(&mut buffer, *position, text, *color, *size);
                 }
             }
@@ -38,7 +47,12 @@ impl BarTextureRenderer {
         buffer
     }
 
-    fn draw_rectangle(&self, buffer: &mut [u8], geometry: &Rectangle<i32, Physical>, color: [f32; 4]) {
+    fn draw_rectangle(
+        &self,
+        buffer: &mut [u8],
+        geometry: &Rectangle<i32, Physical>,
+        color: [f32; 4],
+    ) {
         let x = geometry.loc.x;
         let y = geometry.loc.y;
         let w = geometry.size.w;
@@ -81,10 +95,17 @@ impl BarTextureRenderer {
         }
     }
 
-    fn draw_text(&self, buffer: &mut [u8], position: (i32, i32), text: &str, color: [f32; 4], _size: u32) {
+    fn draw_text(
+        &self,
+        buffer: &mut [u8],
+        position: (i32, i32),
+        text: &str,
+        color: [f32; 4],
+        _size: u32,
+    ) {
         // Simple bitmap font rendering
         // This is a very basic 5x7 font for ASCII characters
-        
+
         let (mut x, y) = position;
 
         for ch in text.chars() {
@@ -122,7 +143,7 @@ impl BarTextureRenderer {
         }
 
         let idx = ((y * self.width + x) * 4) as usize;
-        
+
         if idx + 3 < buffer.len() {
             // Alpha blend
             let src_alpha = color[3];
@@ -130,9 +151,18 @@ impl BarTextureRenderer {
             let out_alpha = src_alpha + dst_alpha * (1.0 - src_alpha);
 
             if out_alpha > 0.0 {
-                buffer[idx] = ((color[0] * src_alpha + buffer[idx] as f32 / 255.0 * dst_alpha * (1.0 - src_alpha)) / out_alpha * 255.0) as u8;
-                buffer[idx + 1] = ((color[1] * src_alpha + buffer[idx + 1] as f32 / 255.0 * dst_alpha * (1.0 - src_alpha)) / out_alpha * 255.0) as u8;
-                buffer[idx + 2] = ((color[2] * src_alpha + buffer[idx + 2] as f32 / 255.0 * dst_alpha * (1.0 - src_alpha)) / out_alpha * 255.0) as u8;
+                buffer[idx] = ((color[0] * src_alpha
+                    + buffer[idx] as f32 / 255.0 * dst_alpha * (1.0 - src_alpha))
+                    / out_alpha
+                    * 255.0) as u8;
+                buffer[idx + 1] = ((color[1] * src_alpha
+                    + buffer[idx + 1] as f32 / 255.0 * dst_alpha * (1.0 - src_alpha))
+                    / out_alpha
+                    * 255.0) as u8;
+                buffer[idx + 2] = ((color[2] * src_alpha
+                    + buffer[idx + 2] as f32 / 255.0 * dst_alpha * (1.0 - src_alpha))
+                    / out_alpha
+                    * 255.0) as u8;
                 buffer[idx + 3] = (out_alpha * 255.0) as u8;
             }
         }
@@ -152,7 +182,7 @@ fn get_char_bitmap(ch: char) -> [u8; 7] {
         '7' => [0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08],
         '8' => [0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E],
         '9' => [0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C],
-        
+
         'A' | 'a' => [0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11],
         'B' | 'b' => [0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E],
         'C' | 'c' => [0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E],
@@ -179,14 +209,14 @@ fn get_char_bitmap(ch: char) -> [u8; 7] {
         'X' | 'x' => [0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11],
         'Y' | 'y' => [0x11, 0x11, 0x11, 0x0A, 0x04, 0x04, 0x04],
         'Z' | 'z' => [0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F],
-        
+
         ' ' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
         ':' => [0x00, 0x0C, 0x0C, 0x00, 0x0C, 0x0C, 0x00],
         '/' => [0x01, 0x01, 0x02, 0x04, 0x08, 0x10, 0x10],
         '-' => [0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00],
         '.' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C],
         ',' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x04],
-        
+
         _ => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], // Unknown character
     }
 }

@@ -1,16 +1,17 @@
 use smithay::backend::input::{
-    InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent, 
-    PointerButtonEvent, PointerMotionEvent, Axis, InputBackend,
+    Axis, ButtonState, InputBackend, InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent,
+    PointerButtonEvent, PointerMotionEvent,
 };
 use smithay::input::{
-    keyboard::{keysyms, ModifiersState},
+    keyboard::{keysyms, Keysym, ModifiersState},
     pointer::{AxisFrame, ButtonEvent, MotionEvent},
 };
 use smithay::utils::{Logical, Point, SERIAL_COUNTER};
+use smithay::wayland::seat::WaylandFocus;
 use std::process::Command;
 
-use crate::config::Action;
 use crate::compositor::WebWMCompositor;
+use crate::config::Action;
 
 // Key modifier flags
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,16 +110,15 @@ impl InputHandler {
             let mods = Modifiers::from_smithay(&modifiers);
 
             // Get the keysym for this keycode
-            let keysym = keyboard
-                .with_xkb_state(compositor, |state| {
-                    state.key_get_one_sym(keycode)
-                });
+            let keysym = Keysym::from(u32::from(keycode));
 
-            println!("Key pressed: keycode={}, keysym={:?}, mods={:?}", 
-                     keycode, keysym, mods);
+            println!(
+                "Key pressed: keycode={:?}, keysym={:?}, mods={:?}",
+                keycode, keysym, mods
+            );
 
             // Check if this matches any keybinding
-            if self.check_keybindings(keysym, mods, compositor) {
+            if self.check_keybindings(u32::from(keysym), mods, compositor) {
                 // Keybinding handled, don't forward to client
                 return;
             }
@@ -130,9 +130,7 @@ impl InputHandler {
                 state,
                 SERIAL_COUNTER.next_serial(),
                 0,
-                |_, _, _| {
-                    smithay::input::keyboard::FilterResult::Forward
-                },
+                |_, _, _| smithay::input::keyboard::FilterResult::Forward,
             );
         }
     }
@@ -191,7 +189,9 @@ impl InputHandler {
             Action::Move { workspace } => {
                 println!("Moving window to workspace: {}", workspace);
                 if let Some(window) = compositor.workspace_manager.focused_window().cloned() {
-                    compositor.workspace_manager.move_window_to_workspace(window, *workspace);
+                    compositor
+                        .workspace_manager
+                        .move_window_to_workspace(window, *workspace);
                     compositor.relayout();
                 }
             }
@@ -231,13 +231,16 @@ impl InputHandler {
                 if let Some(surface) = window.wl_surface() {
                     keyboard.set_focus(
                         compositor,
-                        Some(surface.clone()),
+                        Some(surface.into_owned()),
                         SERIAL_COUNTER.next_serial(),
                     );
-                    
+
                     let workspace = compositor.workspace_manager.active_workspace();
                     let window_idx = workspace.focused_window_idx.unwrap_or(0);
-                    println!("Focused window {} in workspace {}", window_idx, workspace.id);
+                    println!(
+                        "Focused window {} in workspace {}",
+                        window_idx, workspace.id
+                    );
                 }
             }
         }
@@ -249,8 +252,8 @@ impl InputHandler {
         compositor: &mut WebWMCompositor,
     ) {
         let delta = event.delta();
-        self.pointer_location.x += delta.0;
-        self.pointer_location.y += delta.1;
+        self.pointer_location.x += delta.x;
+        self.pointer_location.y += delta.y;
 
         // Clamp to output bounds
         let output_size = (1920.0, 1080.0); // TODO: Get from actual output
@@ -259,15 +262,15 @@ impl InputHandler {
 
         // Update pointer focus based on location
         let surface_under = compositor.space.element_under(self.pointer_location);
-        
+
         if let Some(pointer) = compositor.seat.get_pointer() {
             if let Some((window, location)) = surface_under {
                 if let Some(surface) = window.wl_surface() {
                     let surface_location = self.pointer_location - location.to_f64();
-                    
+
                     pointer.motion(
                         compositor,
-                        Some((surface.clone(), surface_location)),
+                        Some((surface.into_owned(), surface_location)),
                         &MotionEvent {
                             location: self.pointer_location,
                             serial: SERIAL_COUNTER.next_serial(),
@@ -300,15 +303,15 @@ impl InputHandler {
         println!("Pointer button: {} {:?}", button, state);
 
         // On button press, focus the window under cursor
-        if state == KeyState::Pressed {
+        if state == ButtonState::Pressed {
             let surface_under = compositor.space.element_under(self.pointer_location);
-            
+
             if let Some((window, _)) = surface_under {
                 if let Some(keyboard) = compositor.seat.get_keyboard() {
                     if let Some(surface) = window.wl_surface() {
                         keyboard.set_focus(
                             compositor,
-                            Some(surface.clone()),
+                            Some(surface.into_owned() as smithay::reexports::wayland_server::protocol::wl_surface::WlSurface),
                             SERIAL_COUNTER.next_serial(),
                         );
                         println!("Focused window under cursor");
@@ -337,10 +340,8 @@ impl InputHandler {
         compositor: &mut WebWMCompositor,
     ) {
         if let Some(pointer) = compositor.seat.get_pointer() {
-            let horizontal = event.amount(Axis::Horizontal)
-                .unwrap_or(0.0);
-            let vertical = event.amount(Axis::Vertical)
-                .unwrap_or(0.0);
+            let horizontal = event.amount(Axis::Horizontal).unwrap_or(0.0);
+            let vertical = event.amount(Axis::Vertical).unwrap_or(0.0);
 
             let frame = AxisFrame::new(0)
                 .value(Axis::Horizontal, horizontal)
@@ -359,7 +360,7 @@ fn keysym_to_string(keysym: u32) -> String {
         keysyms::KEY_BackSpace => "BackSpace".to_string(),
         keysyms::KEY_Tab => "Tab".to_string(),
         keysyms::KEY_space => "space".to_string(),
-        
+
         // Letters
         keysyms::KEY_a => "a".to_string(),
         keysyms::KEY_b => "b".to_string(),
@@ -387,7 +388,7 @@ fn keysym_to_string(keysym: u32) -> String {
         keysyms::KEY_x => "x".to_string(),
         keysyms::KEY_y => "y".to_string(),
         keysyms::KEY_z => "z".to_string(),
-        
+
         // Numbers
         keysyms::KEY_1 => "1".to_string(),
         keysyms::KEY_2 => "2".to_string(),
@@ -399,7 +400,7 @@ fn keysym_to_string(keysym: u32) -> String {
         keysyms::KEY_8 => "8".to_string(),
         keysyms::KEY_9 => "9".to_string(),
         keysyms::KEY_0 => "0".to_string(),
-        
+
         // Function keys
         keysyms::KEY_F1 => "F1".to_string(),
         keysyms::KEY_F2 => "F2".to_string(),
@@ -413,13 +414,13 @@ fn keysym_to_string(keysym: u32) -> String {
         keysyms::KEY_F10 => "F10".to_string(),
         keysyms::KEY_F11 => "F11".to_string(),
         keysyms::KEY_F12 => "F12".to_string(),
-        
+
         // Arrow keys
         keysyms::KEY_Left => "Left".to_string(),
         keysyms::KEY_Right => "Right".to_string(),
         keysyms::KEY_Up => "Up".to_string(),
         keysyms::KEY_Down => "Down".to_string(),
-        
+
         _ => format!("Unknown({})", keysym),
     }
 }

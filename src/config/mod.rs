@@ -1,10 +1,10 @@
-mod xml_parser;
 mod css_parser;
 mod js_runtime;
+mod xml_parser;
 
-pub use xml_parser::*;
 pub use css_parser::*;
 pub use js_runtime::*;
+pub use xml_parser::*;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -13,12 +13,12 @@ use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    pub desktop: Option<DesktopConfig>,
+    pub stylesheet: Option<StyleSheet>,
     pub keybindings: Vec<Keybinding>,
     pub window_rules: Vec<WindowRule>,
     pub layout: LayoutConfig,
     pub theme: ThemeConfig,
-    pub desktop: Option<DesktopConfig>,
-    pub stylesheet: Option<StyleSheet>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,17 +100,21 @@ fn load_web_config(
     // Load and parse XML
     let xml_content = fs::read_to_string(xml_path)?;
     let desktop_config = xml_parser::parse_desktop_xml(&xml_content)?;
-    println!("  ✓ Parsed desktop.xml: {} bars, {} workspaces, {} window rules",
-             desktop_config.bars.len(),
-             desktop_config.workspaces.len(),
-             desktop_config.window_rules.len());
+    println!(
+        "  ✓ Parsed desktop.xml: {} bars, {} workspaces, {} window rules",
+        desktop_config.bars.len(),
+        desktop_config.workspaces.len(),
+        desktop_config.window_rules.len()
+    );
 
     // Load and parse CSS
     let css_content = fs::read_to_string(css_path)?;
     let stylesheet = css_parser::parse_css(&css_content)?;
-    println!("  ✓ Parsed style.css: {} rules, {} variables",
-             stylesheet.rules.len(),
-             stylesheet.variables.len());
+    println!(
+        "  ✓ Parsed style.css: {} rules, {} variables",
+        stylesheet.rules.len(),
+        stylesheet.variables.len()
+    );
 
     // Load and execute JavaScript
     let js_content = fs::read_to_string(js_path)?;
@@ -119,8 +123,10 @@ fn load_web_config(
     js_runtime.evaluate(&js_content)?;
 
     let js_keybindings = js_runtime.get_keybindings();
-    println!("  ✓ Executed config.js: {} keybindings registered",
-             js_keybindings.len());
+    println!(
+        "  ✓ Executed config.js: {} keybindings registered",
+        js_keybindings.len()
+    );
 
     // Convert to unified Config structure
     let mut config = Config {
@@ -163,17 +169,20 @@ fn load_web_config(
 
 fn extract_theme_from_css(stylesheet: &StyleSheet) -> ThemeConfig {
     // Extract theme colors from CSS variables
-    let border_focused = stylesheet.variables
+    let border_focused = stylesheet
+        .variables
         .get("--border-focus")
         .cloned()
         .unwrap_or("#4c7899".to_string());
 
-    let border_normal = stylesheet.variables
+    let border_normal = stylesheet
+        .variables
         .get("--border-normal")
         .cloned()
         .unwrap_or("#333333".to_string());
 
-    let background = stylesheet.variables
+    let background = stylesheet
+        .variables
         .get("--bg-primary")
         .cloned()
         .unwrap_or("#1e1e1e".to_string());

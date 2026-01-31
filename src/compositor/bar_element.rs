@@ -26,7 +26,8 @@ impl BarRenderElement {
         // Import the RGBA buffer as a texture
         let texture = renderer.import_memory(
             buffer,
-            (size.w, size.h).into(),
+            smithay::backend::allocator::Fourcc::Argb8888,
+            smithay::utils::Size::from((size.w, size.h)),
             false, // Not flipped
         )?;
 
@@ -47,7 +48,8 @@ impl BarRenderElement {
         // Re-import the buffer as a new texture
         let new_texture = renderer.import_memory(
             buffer,
-            (size.w, size.h).into(),
+            smithay::backend::allocator::Fourcc::Argb8888,
+            smithay::utils::Size::from((size.w, size.h)),
             false,
         )?;
         self.texture = Arc::new(new_texture);
@@ -68,11 +70,11 @@ impl Element for BarRenderElement {
     fn src(&self) -> Rectangle<f64, Buffer> {
         Rectangle::from_loc_and_size(
             (0.0, 0.0),
-            self.texture.size().to_f64().to_buffer(
-                1.0,
-                Transform::Normal,
-                &self.texture.size().to_logical(1).to_f64(),
-            ),
+            self.texture
+                .size()
+                .to_logical(1, Transform::Normal)
+                .to_f64()
+                .to_buffer(1.0, Transform::Normal),
         )
     }
 
@@ -126,10 +128,8 @@ impl RenderElement<GlesRenderer> for BarRenderElement {
             opaque_regions,
             Transform::Normal,
             1.0, // alpha
+            None,
+            &[],
         )
-    }
-
-    fn underlying_storage(&self, _renderer: &mut GlesRenderer) -> Option<UnderlyingStorage> {
-        Some(UnderlyingStorage::Wayland((**self.texture).clone()))
     }
 }

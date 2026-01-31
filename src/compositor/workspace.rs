@@ -30,7 +30,7 @@ impl Workspace {
 
     pub fn add_window(&mut self, window: Window) {
         self.windows.push(window);
-        
+
         // Focus the newly added window
         if self.focused_window_idx.is_none() {
             self.focused_window_idx = Some(0);
@@ -42,7 +42,7 @@ impl Workspace {
     pub fn remove_window(&mut self, window: &Window) -> bool {
         if let Some(idx) = self.windows.iter().position(|w| w == window) {
             self.windows.remove(idx);
-            
+
             // Adjust focused window index
             if let Some(focused) = self.focused_window_idx {
                 if focused >= self.windows.len() {
@@ -53,7 +53,7 @@ impl Workspace {
                     };
                 }
             }
-            
+
             true
         } else {
             false
@@ -130,11 +130,7 @@ impl WorkspaceManager {
 
         // Create default workspaces (1-9)
         for i in 1..=9 {
-            manager.add_workspace(Workspace::new(
-                i,
-                format!("{}", i),
-                LayoutMode::Tiling,
-            ));
+            manager.add_workspace(Workspace::new(i, format!("{}", i), LayoutMode::Tiling));
         }
 
         manager
@@ -157,12 +153,14 @@ impl WorkspaceManager {
     }
 
     pub fn active_workspace(&self) -> &Workspace {
-        self.workspaces.get(&self.active_workspace_id)
+        self.workspaces
+            .get(&self.active_workspace_id)
             .expect("Active workspace must exist")
     }
 
     pub fn active_workspace_mut(&mut self) -> &mut Workspace {
-        self.workspaces.get_mut(&self.active_workspace_id)
+        self.workspaces
+            .get_mut(&self.active_workspace_id)
             .expect("Active workspace must exist")
     }
 
@@ -184,7 +182,7 @@ impl WorkspaceManager {
     pub fn move_window_to_workspace(&mut self, window: Window, target_workspace_id: u32) -> bool {
         // Find which workspace currently has this window
         let mut source_workspace_id = None;
-        
+
         for (ws_id, workspace) in &self.workspaces {
             if workspace.windows.iter().any(|w| w == &window) {
                 source_workspace_id = Some(*ws_id);
@@ -201,7 +199,10 @@ impl WorkspaceManager {
             // Add to target workspace
             if let Some(target_ws) = self.workspaces.get_mut(&target_workspace_id) {
                 target_ws.add_window(window);
-                println!("Moved window from workspace {} to {}", source_id, target_workspace_id);
+                println!(
+                    "Moved window from workspace {} to {}",
+                    source_id, target_workspace_id
+                );
                 return true;
             }
         }
@@ -272,30 +273,32 @@ impl WorkspaceManager {
     }
 
     pub fn cycle_workspace_next(&mut self) {
-        let current_pos = self.workspace_order
+        let current_pos = self
+            .workspace_order
             .iter()
             .position(|&id| id == self.active_workspace_id)
             .unwrap_or(0);
-        
+
         let next_pos = (current_pos + 1) % self.workspace_order.len();
         let next_id = self.workspace_order[next_pos];
-        
+
         self.switch_to_workspace(next_id);
     }
 
     pub fn cycle_workspace_prev(&mut self) {
-        let current_pos = self.workspace_order
+        let current_pos = self
+            .workspace_order
             .iter()
             .position(|&id| id == self.active_workspace_id)
             .unwrap_or(0);
-        
+
         let prev_pos = if current_pos == 0 {
             self.workspace_order.len() - 1
         } else {
             current_pos - 1
         };
         let prev_id = self.workspace_order[prev_pos];
-        
+
         self.switch_to_workspace(prev_id);
     }
 }
@@ -332,17 +335,17 @@ mod tests {
     #[test]
     fn test_workspace_manager() {
         let mut manager = WorkspaceManager::new();
-        
+
         // Should have 9 default workspaces
         assert_eq!(manager.workspace_count(), 9);
-        
+
         // Should start on workspace 1
         assert_eq!(manager.active_workspace_id(), 1);
-        
+
         // Switch to workspace 2
         assert!(manager.switch_to_workspace(2));
         assert_eq!(manager.active_workspace_id(), 2);
-        
+
         // Try to switch to non-existent workspace
         assert!(!manager.switch_to_workspace(99));
     }
@@ -350,18 +353,18 @@ mod tests {
     #[test]
     fn test_workspace_cycling() {
         let mut manager = WorkspaceManager::new();
-        
+
         // Start at 1
         assert_eq!(manager.active_workspace_id(), 1);
-        
+
         // Cycle forward
         manager.cycle_workspace_next();
         assert_eq!(manager.active_workspace_id(), 2);
-        
+
         // Cycle backward
         manager.cycle_workspace_prev();
         assert_eq!(manager.active_workspace_id(), 1);
-        
+
         // Cycle backward from 1 should wrap to 9
         manager.cycle_workspace_prev();
         assert_eq!(manager.active_workspace_id(), 9);
