@@ -2,6 +2,8 @@ pub mod backend;
 pub mod bar;
 pub mod bar_element;
 pub mod bar_renderer;
+pub mod drm_backend;
+pub mod full_drm_backend;
 pub mod input;
 pub mod workspace;
 
@@ -11,7 +13,7 @@ use workspace::{LayoutMode, WorkspaceManager};
 use smithay::{
     delegate_compositor, delegate_output, delegate_seat, delegate_shm, delegate_xdg_shell,
     desktop::{PopupKind, PopupManager, Space, Window},
-    input::{keyboard::ModifiersState, pointer::CursorImageStatus, Seat, SeatHandler, SeatState},
+    input::{keyboard::ModifiersState, Seat, SeatHandler, SeatState},
     reexports::{
         calloop::LoopHandle,
         wayland_server::{
@@ -20,7 +22,7 @@ use smithay::{
             Client, Display, DisplayHandle,
         },
     },
-    utils::{Clock, Monotonic, Serial, Size},
+    utils::{Clock, Logical, Monotonic, Point, Serial, Size},
     wayland::{
         buffer::BufferHandler,
         compositor::{CompositorClientState, CompositorHandler, CompositorState},
@@ -49,6 +51,8 @@ pub struct WebWMCompositor {
     pub bar_renderer: Option<BarRenderer>,
     pub config: Config,
     pub stylesheet: Option<StyleSheet>,
+    pub cursor_image_status: smithay::input::pointer::CursorImageStatus,
+    pub input_handler: input::InputHandler,
 }
 
 impl WebWMCompositor {
@@ -117,6 +121,8 @@ impl WebWMCompositor {
             bar_renderer,
             config,
             stylesheet,
+            cursor_image_status: smithay::input::pointer::CursorImageStatus::default_named(),
+            input_handler: input::InputHandler::new(),
         }
     }
 
@@ -344,6 +350,12 @@ impl WebWMCompositor {
         // Execute corresponding actions
     }
 
+    pub fn handle_input_event(&mut self) {
+        println!("Input event received (simplified)");
+        // TODO: Implement proper input handling
+        // For now, just log events
+    }
+
     pub fn get_border_color(&self, _window: &Window, focused: bool) -> [f32; 4] {
         if let Some(ref stylesheet) = self.stylesheet {
             let selector = if focused { "window:focus" } else { "window" };
@@ -403,6 +415,10 @@ impl WebWMCompositor {
             }
         }
         0
+    }
+
+    pub fn pointer_location(&self) -> Point<f64, Logical> {
+        self.input_handler.pointer_location
     }
 }
 
@@ -502,8 +518,12 @@ impl SeatHandler for WebWMCompositor {
         }
     }
 
-    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: CursorImageStatus) {
-        // Handle cursor image changes
+    fn cursor_image(
+        &mut self,
+        _seat: &Seat<Self>,
+        image: smithay::input::pointer::CursorImageStatus,
+    ) {
+        self.cursor_image_status = image;
     }
 }
 

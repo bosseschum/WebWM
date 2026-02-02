@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=WebWM
+Comment=Web-Tech Wayland Compositor
+Exec=/home/bosse/Projects/WebWM/target/debug/webwm
+# Icon=webwm
+Type=Application
+DesktopNames=wayland

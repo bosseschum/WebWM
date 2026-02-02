@@ -9,7 +9,7 @@ repository = "https://github.com/bosseschum/webwm"
 
 [dependencies]
 # Wayland compositor framework - UPDATED to working version
-smithay = { git = "https://github.com/Smithay/smithay", features = ["backend_winit", "backend_libinput", "backend_drm", "backend_udev", "wayland_frontend", "desktop", "renderer_glow"] }
+smithay = { git = "https://github.com/Smithay/smithay", features = ["backend_winit", "backend_libinput", "backend_drm", "backend_udev", "backend_gbm", "backend_egl", "backend_session_libseat", "renderer_gl", "renderer_glow"] }
 
 # Window system
 wayland-server = "0.31"
@@ -35,6 +35,9 @@ rquickjs = { version = "0.4", features = ["array-buffer", "classes"] }
 
 # Utilities
 thiserror = "1.0"
+
+# udev support for DRM
+udev = "0.8"
 
 [[bin]]
 name = "webwm"

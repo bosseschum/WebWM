@@ -1,4 +1,4 @@
-use smithay::utils::{Physical, Rectangle, Size};
+use smithay::utils::{Physical, Rectangle};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::compositor::workspace::WorkspaceManager;
