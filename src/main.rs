@@ -44,7 +44,7 @@ fn run_config_mode(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Step 1: Loading Configuration");
     println!("-------------------------------------------");
-    let config = config::load_config(config_dir)?;
+    let (config, js_runtime) = config::load_config(config_dir)?;
 
     println!("\nConfiguration Summary:");
     println!("  • Keybindings: {}", config.keybindings.len());
@@ -124,7 +124,7 @@ fn run_compositor() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load configuration
     println!("Loading configuration from: {}", config_dir);
-    let config = config::load_config(&config_dir)?;
+    let (config, js_runtime) = config::load_config(&config_dir)?;
 
     println!("✓ Configuration loaded");
     println!("  • {} keybindings", config.keybindings.len());
@@ -141,7 +141,8 @@ fn run_compositor() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create compositor
     println!("Initializing compositor...");
-    let mut compositor = WebWMCompositor::new(&mut display, event_loop.handle(), config);
+    let mut compositor =
+        WebWMCompositor::new(&mut display, event_loop.handle(), config, js_runtime);
     println!("✓ Compositor initialized");
 
     // Initialize backend with event handler

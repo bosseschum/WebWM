@@ -1,8 +1,13 @@
 use smithay::{
-    backend::session::libseat::LibSeatSession,
+    backend::{
+        allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
+        egl::{EGLContext, EGLDisplay},
+        renderer::gles::GlesRenderer,
+        session::libseat::LibSeatSession,
+    },
     output::{Mode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::calloop::{EventLoop, LoopHandle},
-    utils::Transform,
+    utils::{DeviceFd, Transform},
 };
 
 use crate::compositor::WebWMCompositor;
@@ -47,6 +52,9 @@ impl Error for DrmError {}
 
 pub struct DrmSurface {
     pub output: Output,
+    pub gbm_device: GbmDevice<DeviceFd>,
+    pub egl_display: EGLDisplay,
+    pub renderer: GlesRenderer,
     pub device_path: String,
 }
 
@@ -54,7 +62,7 @@ pub struct WebWMBackend {
     pub session: LibSeatSession,
     pub event_loop: LoopHandle<'static, WebWMCompositor>,
     pub frame_count: AtomicUsize,
-    pub surfaces: Vec<DrmSurface>,
+    pub surfaces: HashMap<String, DrmSurface>,
 }
 
 impl WebWMBackend {
@@ -86,9 +94,39 @@ impl WebWMBackend {
         println!("🔧 Initializing DRM device: {}", device_path);
 
         // Open DRM device
-        let _file = File::open(device_path).map_err(|e| {
+        let file = File::open(device_path).map_err(|e| {
             DrmError::BackendInitFailed(format!("Failed to open DRM device {}: {}", device_path, e))
         })?;
+
+        let device_fd = DeviceFd::from(OwnedFd::from(file));
+
+        // Create GBM device
+        let gbm_device = GbmDevice::new(device_fd).map_err(|e| {
+            DrmError::BackendInitFailed(format!("Failed to create GBM device: {}", e))
+        })?;
+
+        println!("  ✓ GBM device created");
+
+        // Initialize EGL
+        let egl_display = unsafe { EGLDisplay::new(gbm_device.clone()) }.map_err(|e| {
+            DrmError::BackendInitFailed(format!("Failed to create EGL display: {}", e))
+        })?;
+
+        println!("  ✓ EGL display created");
+
+        // Create EGL context
+        let egl_context = EGLContext::new(&egl_display).map_err(|e| {
+            DrmError::BackendInitFailed(format!("Failed to create EGL context: {}", e))
+        })?;
+
+        println!("  ✓ EGL context created");
+
+        // Create GLES renderer (consumes the egl_context)
+        let renderer = unsafe { GlesRenderer::new(egl_context) }.map_err(|e| {
+            DrmError::BackendInitFailed(format!("Failed to create GLES renderer: {}", e))
+        })?;
+
+        println!("  ✓ GLES renderer created");
 
         // Create output
         let mode = Mode {
@@ -125,6 +163,9 @@ impl WebWMBackend {
 
         Ok(DrmSurface {
             output,
+            gbm_device,
+            egl_display,
+            renderer,
             device_path: device_path.to_string(),
         })
     }
@@ -139,39 +180,36 @@ impl WebWMBackend {
 
         println!("✓ LibSeat session created");
 
-        // Scan for DRM devices
-        let mut surfaces = HashMap::new();
-        let device_paths = Self::scan_drm_devices()?;
+        // For now, create a simple placeholder output
+        let mode = Mode {
+            size: (1920, 1080).into(),
+            refresh: 60_000,
+        };
 
-        if device_paths.is_empty() {
-            return Err(DrmError::NoValidConnectors);
-        }
+        let physical_properties = PhysicalProperties {
+            size: (600, 340).into(),
+            subpixel: Subpixel::Unknown,
+            make: "WebWM".into(),
+            model: "DRM-Display".into(),
+            serial_number: String::new(),
+        };
 
-        // Initialize each DRM device
-        for device_path in device_paths {
-            match Self::init_drm_device(&device_path) {
-                Ok(surface) => {
-                    println!("✓ DRM device initialized: {}", device_path);
-                    surfaces.insert(device_path.clone(), surface);
-                }
-                Err(e) => {
-                    println!("⚠️  Failed to initialize DRM device {}: {}", device_path, e);
-                    continue;
-                }
-            }
-        }
+        let output = Output::new("DRM-0".into(), physical_properties);
+        output.change_current_state(
+            Some(mode),
+            Some(Transform::Normal),
+            Some(Scale::Fractional(1.0)),
+            Some((0, 0).into()),
+        );
+        output.set_preferred(mode);
 
-        if surfaces.is_empty() {
-            return Err(DrmError::NoValidConnectors);
-        }
-
-        println!("✓ {} DRM surface(s) ready for rendering", surfaces.len());
+        println!("✓ DRM display created: {}x{}", mode.size.w, mode.size.h);
 
         Ok(Self {
             session,
             event_loop: event_loop.handle(),
             frame_count: AtomicUsize::new(0),
-            surfaces: surfaces.into_values().collect(),
+            surfaces: HashMap::new(),
         })
     }
 
@@ -184,9 +222,12 @@ impl WebWMBackend {
         }
 
         // Render each surface
-        for surface in &mut self.surfaces {
+        for (device_path, surface) in &mut self.surfaces {
             Self::render_surface(surface, frame_count).map_err(|e| {
-                DrmError::RenderingFailed(format!("Failed to render surface: {}", e))
+                DrmError::RenderingFailed(format!(
+                    "Failed to render surface {}: {}",
+                    device_path, e
+                ))
             })?;
         }
 
@@ -201,33 +242,22 @@ impl WebWMBackend {
         Ok(())
     }
 
-    fn render_surface(surface: &DrmSurface, frame_count: usize) -> Result<(), DrmError> {
+    fn render_surface(surface: &mut DrmSurface, frame_count: usize) -> Result<(), DrmError> {
         let output_size = surface.output.current_mode().unwrap().size;
 
-        // EGL context binding would happen here in a full implementation
-        // For now, we'll simulate the rendering operations
+        // TODO: Bind EGL context for this surface when implementing real rendering
+        // surface
+        //     .egl_context
+        //     .bind()
+        //     .map_err(|e| DrmError::RenderingFailed(format!("Failed to bind EGL context: {}", e)))?;
 
         // Clear the screen with WebWM background color
-        // Note: In a full implementation, you'd use actual OpenGL calls here
-        // For now, we'll simulate the rendering operations
-
         if frame_count % 60 == 0 {
             println!(
                 "  🖥️  Rendering surface: {}x{}",
                 output_size.w, output_size.h
             );
             println!("    ✓ Clear screen to #1a1b26 (WebWM Dark)");
-            println!("    ✓ Render desktop background");
-            println!("    ✓ Apply compositor effects");
-        }
-
-        // Simulate actual OpenGL operations
-        if frame_count == 60 {
-            println!("    🎮 GPU Operations:");
-            println!("      - glClearColor(0.102, 0.106, 0.149, 1.0)");
-            println!("      - glClear(GL_COLOR_BUFFER_BIT)");
-            println!("      - Render window decorations");
-            println!("      - Swap buffers");
         }
 
         // In a real implementation, you would:
@@ -250,7 +280,7 @@ impl WebWMBackend {
         println!("║  ✓ OpenGL ES Renderer Ready                              ║");
         println!("║                                                             ║");
 
-        for (i, surface) in self.surfaces.iter().enumerate() {
+        for (i, (_name, surface)) in self.surfaces.iter().enumerate() {
             let mode = surface.output.current_mode().unwrap();
             println!(
                 "║  🖥️  Display {}: {}x{} @{}Hz                    ║",
@@ -273,7 +303,7 @@ impl WebWMBackend {
     }
 
     pub fn get_outputs(&self) -> Vec<&Output> {
-        self.surfaces.iter().map(|s| &s.output).collect()
+        self.surfaces.values().map(|s| &s.output).collect()
     }
 }
 

@@ -62,7 +62,9 @@ pub struct ThemeConfig {
     pub background: String,
 }
 
-pub fn load_config(config_dir: &str) -> Result<Config, Box<dyn std::error::Error>> {
+pub fn load_config(
+    config_dir: &str,
+) -> Result<(Config, Option<JSRuntime>), Box<dyn std::error::Error>> {
     let config_path = Path::new(config_dir);
 
     println!("Loading configuration from: {}", config_dir);
@@ -74,7 +76,8 @@ pub fn load_config(config_dir: &str) -> Result<Config, Box<dyn std::error::Error
 
     if xml_path.exists() && css_path.exists() && js_path.exists() {
         println!("Found web-based configuration files");
-        return load_web_config(&xml_path, &css_path, &js_path);
+        let (config, js_runtime) = load_web_config(&xml_path, &css_path, &js_path)?;
+        return Ok((config, Some(js_runtime)));
     }
 
     // Fall back to JSON config
@@ -83,18 +86,18 @@ pub fn load_config(config_dir: &str) -> Result<Config, Box<dyn std::error::Error
         println!("Loading JSON configuration");
         let config_str = fs::read_to_string(config_file)?;
         let config: Config = serde_json::from_str(&config_str)?;
-        return Ok(config);
+        return Ok((config, None));
     }
 
     println!("No configuration found, using defaults");
-    Ok(default_config())
+    Ok((default_config(), None))
 }
 
 fn load_web_config(
     xml_path: &Path,
     css_path: &Path,
     js_path: &Path,
-) -> Result<Config, Box<dyn std::error::Error>> {
+) -> Result<(Config, JSRuntime), Box<dyn std::error::Error>> {
     println!("Parsing web-based configuration...");
 
     // Load and parse XML
@@ -166,7 +169,7 @@ fn load_web_config(
     }
 
     println!("Configuration loaded successfully!");
-    Ok(config)
+    Ok((config, js_runtime))
 }
 
 fn extract_theme_from_css(stylesheet: &StyleSheet) -> ThemeConfig {

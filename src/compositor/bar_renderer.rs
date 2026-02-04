@@ -16,7 +16,7 @@ impl BarTextureRenderer {
         Self { width, height }
     }
 
-    /// Render bar elements to a RGBA buffer
+    /// Render bar elements to a RGBA buffer (ARGB8888 format for Smithay)
     pub fn render_to_buffer(&self, elements: &[BarElement]) -> Vec<u8> {
         let size = (self.width * self.height * 4) as usize;
         let mut buffer = vec![0u8; size];
@@ -145,25 +145,33 @@ impl BarTextureRenderer {
         let idx = ((y * self.width + x) * 4) as usize;
 
         if idx + 3 < buffer.len() {
-            // Alpha blend
+            // Smithay uses ARGB8888 format: [Blue, Green, Red, Alpha] in memory
+            let src_r = (color[0] * 255.0) as u8;
+            let src_g = (color[1] * 255.0) as u8;
+            let src_b = (color[2] * 255.0) as u8;
+            let src_a = (color[3] * 255.0) as u8;
+
+            // Alpha blend with existing pixel
+            let dst_b = buffer[idx];
+            let dst_g = buffer[idx + 1];
+            let dst_r = buffer[idx + 2];
+            let dst_a = buffer[idx + 3];
+
             let src_alpha = color[3];
-            let dst_alpha = buffer[idx + 3] as f32 / 255.0;
+            let dst_alpha = dst_a as f32 / 255.0;
             let out_alpha = src_alpha + dst_alpha * (1.0 - src_alpha);
 
             if out_alpha > 0.0 {
-                buffer[idx] = ((color[0] * src_alpha
-                    + buffer[idx] as f32 / 255.0 * dst_alpha * (1.0 - src_alpha))
-                    / out_alpha
-                    * 255.0) as u8;
-                buffer[idx + 1] = ((color[1] * src_alpha
-                    + buffer[idx + 1] as f32 / 255.0 * dst_alpha * (1.0 - src_alpha))
-                    / out_alpha
-                    * 255.0) as u8;
-                buffer[idx + 2] = ((color[2] * src_alpha
-                    + buffer[idx + 2] as f32 / 255.0 * dst_alpha * (1.0 - src_alpha))
-                    / out_alpha
-                    * 255.0) as u8;
-                buffer[idx + 3] = (out_alpha * 255.0) as u8;
+                buffer[idx] = ((src_b as f32 * src_alpha
+                    + dst_b as f32 * dst_alpha * (1.0 - src_alpha))
+                    / out_alpha) as u8; // Blue
+                buffer[idx + 1] = ((src_g as f32 * src_alpha
+                    + dst_g as f32 * dst_alpha * (1.0 - src_alpha))
+                    / out_alpha) as u8; // Green
+                buffer[idx + 2] = ((src_r as f32 * src_alpha
+                    + dst_r as f32 * dst_alpha * (1.0 - src_alpha))
+                    / out_alpha) as u8; // Red
+                buffer[idx + 3] = (out_alpha * 255.0) as u8; // Alpha
             }
         }
     }
@@ -216,6 +224,9 @@ fn get_char_bitmap(ch: char) -> [u8; 7] {
         '-' => [0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00],
         '.' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C],
         ',' => [0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x04],
+        '@' => [0x0E, 0x11, 0x17, 0x15, 0x17, 0x10, 0x0E],
+        '#' => [0x0A, 0x0A, 0x1F, 0x0A, 0x1F, 0x0A, 0x0A],
+        '%' => [0x11, 0x02, 0x04, 0x0E, 0x10, 0x11, 0x00],
 
         _ => [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], // Unknown character
     }

@@ -138,10 +138,7 @@ impl BarRenderer {
                 self.render_window_title(focused_window_title, x_offset, y, *max_width, text_color)
             }
             Widget::Clock { format } => self.render_clock(format, x_offset, y, text_color),
-            Widget::SystemTray => {
-                // TODO: Implement system tray
-                Vec::new()
-            }
+            Widget::SystemTray => render_system_tray(self, x_offset, y, text_color, stylesheet),
             Widget::Spacer { flex } => {
                 *x_offset += 100 * (*flex as i32); // Simple spacer
                 Vec::new()
@@ -308,6 +305,50 @@ pub enum BarElement {
         color: [f32; 4],
         size: u32,
     },
+}
+
+fn render_system_tray(
+    _bar_renderer: &BarRenderer,
+    x_offset: &mut i32,
+    y: i32,
+    _text_color: [f32; 4],
+    _stylesheet: Option<&StyleSheet>,
+) -> Vec<BarElement> {
+    let mut elements = Vec::new();
+
+    // Simple system Tray - show network and battery icons as placeholders
+    // This is a basic implementation - real system Tray would integrate with
+    // Status Notifier protocol and show actual application icons
+
+    // Network icon (WiFi symbol)
+    elements.push(BarElement::Text {
+        position: (*x_offset, y + 8),
+        text: "📶".to_string(),
+        color: [1.0, 1.0, 1.0, 1.0], // White
+        size: 16,
+    });
+    *x_offset += 24;
+
+    // Battery icon
+    elements.push(BarElement::Text {
+        position: (*x_offset, y + 8),
+        text: "🔋".to_string(),
+        color: [1.0, 1.0, 1.0, 1.0], // White
+        size: 16,
+    });
+    *x_offset += 24;
+
+    // Volume icon
+    elements.push(BarElement::Text {
+        position: (*x_offset, y + 8),
+        text: "🔊".to_string(),
+        color: [1.0, 1.0, 1.0, 1.0], // White
+        size: 16,
+    });
+    *x_offset += 24;
+
+    println!("  📊 Rendered system tray with network, battery, volume icons");
+    elements
 }
 
 fn format_time(format: &str) -> String {

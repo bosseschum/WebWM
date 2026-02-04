@@ -301,6 +301,20 @@ impl WorkspaceManager {
 
         self.switch_to_workspace(prev_id);
     }
+
+    pub fn toggle_floating(&mut self) {
+        let active_workspace = self.active_workspace_mut();
+        active_workspace.layout_mode = match active_workspace.layout_mode {
+            LayoutMode::Tiling => LayoutMode::Floating,
+            LayoutMode::Floating => LayoutMode::Tiling,
+            LayoutMode::Monocle => LayoutMode::Tiling,
+        };
+
+        println!(
+            "Switched workspace {} to {:?} mode",
+            active_workspace.id, active_workspace.layout_mode
+        );
+    }
 }
 
 impl Default for WorkspaceManager {

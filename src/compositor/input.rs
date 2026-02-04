@@ -204,12 +204,19 @@ impl InputHandler {
 
             Action::ToggleFloating => {
                 println!("Toggling floating mode");
-                // TODO: Implement floating toggle
+                compositor.workspace_manager.toggle_floating();
+                compositor.relayout();
             }
 
             Action::Custom { js } => {
                 println!("Executing custom JS: {}", js);
-                // TODO: Execute JavaScript callback
+                if let Some(ref js_runtime) = compositor.js_runtime {
+                    if let Err(e) = js_runtime.execute_callback(&js, "") {
+                        eprintln!("Failed to execute JavaScript '{}': {}", js, e);
+                    }
+                } else {
+                    eprintln!("No JavaScript runtime available for custom action: {}", js);
+                }
             }
         }
     }

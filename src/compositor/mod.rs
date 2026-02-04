@@ -34,7 +34,7 @@ use smithay::{
     },
 };
 
-use crate::config::{Config, StyleSheet};
+use crate::config::{Config, JSRuntime, StyleSheet};
 
 pub struct WebWMCompositor {
     pub display_handle: DisplayHandle,
@@ -53,6 +53,7 @@ pub struct WebWMCompositor {
     pub stylesheet: Option<StyleSheet>,
     pub cursor_image_status: smithay::input::pointer::CursorImageStatus,
     pub input_handler: input::InputHandler,
+    pub js_runtime: Option<JSRuntime>,
 }
 
 impl WebWMCompositor {
@@ -60,6 +61,7 @@ impl WebWMCompositor {
         display: &mut Display<Self>,
         _loop_handle: LoopHandle<'static, Self>,
         config: Config,
+        js_runtime: Option<JSRuntime>,
     ) -> Self {
         let display_handle = display.handle();
         let clock = Clock::new();
@@ -123,6 +125,7 @@ impl WebWMCompositor {
             stylesheet,
             cursor_image_status: smithay::input::pointer::CursorImageStatus::default_named(),
             input_handler: input::InputHandler::new(),
+            js_runtime,
         }
     }
 
@@ -387,9 +390,10 @@ impl WebWMCompositor {
 
     pub fn get_focused_window_title(&self) -> Option<String> {
         if let Some(window) = self.workspace_manager.focused_window() {
-            if let Some(toplevel) = window.toplevel() {
-                // Get title via with_pending_state
-                return Some(String::new()); // Placeholder until API is clarified
+            if let Some(_toplevel) = window.toplevel() {
+                // For now, return a placeholder until we implement proper title extraction
+                // TODO: Implement proper window title extraction from XDG toplevel state
+                return Some("Window".to_string());
             }
         }
         None
