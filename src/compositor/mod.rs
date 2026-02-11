@@ -5,6 +5,7 @@ pub mod bar_renderer;
 pub mod drm_backend;
 pub mod full_drm_backend;
 pub mod input;
+pub mod renderer;
 pub mod workspace;
 
 use bar::{BarElement, BarRenderer};
@@ -227,14 +228,16 @@ impl WebWMCompositor {
     }
 
     fn relayout(&mut self) {
+        self.relayout_with_size(Size::from((1920, 1080))) // Fallback size
+    }
+
+    pub fn relayout_with_size(&mut self, output_size: Size<i32, smithay::utils::Physical>) {
         let active_workspace = self.workspace_manager.active_workspace();
 
         if active_workspace.is_empty() {
             return;
         }
 
-        // Get output size (hardcoded for now, would detect actual output)
-        let output_size = Size::from((1920, 1080));
         let gaps = self.config.layout.gaps as i32;
 
         match active_workspace.layout_mode {

@@ -262,8 +262,8 @@ impl InputHandler {
         self.pointer_location.x += delta.x;
         self.pointer_location.y += delta.y;
 
-        // Clamp to output bounds
-        let output_size = (1920.0, 1080.0); // TODO: Get from actual output
+        // Clamp to output bounds - use default for now, should be passed from backend
+        let output_size = (1920.0, 1080.0);
         self.pointer_location.x = self.pointer_location.x.max(0.0).min(output_size.0);
         self.pointer_location.y = self.pointer_location.y.max(0.0).min(output_size.1);
 

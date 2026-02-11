@@ -1,16 +1,19 @@
 use smithay::{
     backend::{
-        renderer::{damage::OutputDamageTracker, gles::GlesRenderer, ImportMem},
+        renderer::{
+            damage::OutputDamageTracker, element::AsRenderElements, gles::GlesRenderer, Frame,
+            Renderer,
+        },
         winit::{self, WinitGraphicsBackend},
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::EventLoop,
-    utils::{Physical, Rectangle, Size, Transform},
+    utils::{Physical, Point, Rectangle, Size, Transform},
 };
 
 use crate::compositor::input::InputHandler;
+use crate::compositor::renderer::{SolidColorRenderer, WebWMRenderer};
 use crate::compositor::WebWMCompositor;
-use crate::compositor::bar_renderer::BarTextureRenderer;
 
 pub enum WebWMBackend {
     Winit(WinitBackendState),
@@ -23,6 +26,8 @@ pub struct WinitBackendState {
     pub damage_tracker: OutputDamageTracker,
     pub output: Output,
     pub input_handler: InputHandler,
+    pub renderer: WebWMRenderer,
+    pub solid_renderer: SolidColorRenderer,
 }
 
 impl WebWMBackend {
@@ -70,16 +75,17 @@ impl WebWMBackend {
 
                 let damage_tracker = OutputDamageTracker::from_output(&output);
 
-                event_loop.handle().insert_source(
-                    winit_events,
-                    move |_event, _, _compositor| {},
-                )?;
+                event_loop
+                    .handle()
+                    .insert_source(winit_events, move |_event, _, _compositor| {})?;
 
                 let winit_state = WinitBackendState {
                     winit: backend,
                     damage_tracker,
                     output,
                     input_handler: InputHandler::new(),
+                    renderer: WebWMRenderer::new(),
+                    solid_renderer: SolidColorRenderer::new(),
                 };
 
                 Ok(WebWMBackend::Winit(winit_state))
@@ -98,7 +104,8 @@ impl WebWMBackend {
                 // Bind renderer
                 state.winit.bind()?;
 
-                let _renderer = state.winit.renderer();
+                // Update layout with actual output size first
+                compositor.relayout_with_size(size);
 
                 // Get windows to render
                 let windows: Vec<_> = compositor
@@ -108,10 +115,10 @@ impl WebWMBackend {
                         let location = compositor.space.element_location(window)?;
                         let geometry = window.geometry();
                         let render_location = location + geometry.loc;
-                        
+
                         Some((
                             window,
-                            Rectangle::new(
+                            Rectangle::<i32, smithay::utils::Physical>::from_loc_and_size(
                                 (render_location.x, render_location.y),
                                 (geometry.size.w, geometry.size.h),
                             ),
@@ -119,71 +126,38 @@ impl WebWMBackend {
                     })
                     .collect();
 
-                println!("🎨 Rendering frame with {} windows", windows.len());
+                // Get bar elements
+                let _bar_elements = compositor.render_bar_elements();
 
-                // Get background color from CSS
-                let bg_color = if let Some(ref ss) = compositor.config.stylesheet {
-                    ss.get_color("desktop", "background")
-                        .map(|c| c.to_rgba_f32())
-                        .unwrap_or([0.10, 0.11, 0.15, 1.0])
-                } else {
-                    [0.10, 0.11, 0.15, 1.0]
-                };
+                // Basic rendering for now
+                // Use the original working pattern from the existing code
+                state.winit.bind()?;
 
-                println!("  🎨 Background: #{:02x}{:02x}{:02x}",
-                    (bg_color[0] * 255.0) as u8,
-                    (bg_color[1] * 255.0) as u8,
-                    (bg_color[2] * 255.0) as u8
+                // For now, just use the simple rendering pattern
+                // We'll integrate WebWMRenderer in a future update
+                println!(
+                    "🎨 OpenGL rendering initialized with {} windows",
+                    windows.len()
                 );
-
-                // Log window rendering info
-                for (i, (_window, geometry)) in windows.iter().enumerate() {
-                    let is_focused = i == 0;
-                    
-                    let border_color = if is_focused {
-                        [0.54, 0.71, 0.98, 1.0] // #89b4fa
-                    } else {
-                        [0.19, 0.20, 0.27, 1.0] // #313244
-                    };
-
-                    let icon = if is_focused { "🔵" } else { "⚪" };
-                    println!("  {} Window {}: {}x{} at ({}, {}) border:#{:02x}{:02x}{:02x}",
-                        icon, i,
-                        geometry.size.w, geometry.size.h,
-                        geometry.loc.x, geometry.loc.y,
-                        (border_color[0] * 255.0) as u8,
-                        (border_color[1] * 255.0) as u8,
-                        (border_color[2] * 255.0) as u8
+                for (i, (window, geometry)) in windows.iter().enumerate() {
+                    let status = if i == 0 { "focused" } else { "normal" };
+                    println!(
+                        "  Window {}: {}x{} at ({}, {}) [{}]",
+                        i, geometry.size.w, geometry.size.h, geometry.loc.x, geometry.loc.y, status
                     );
                 }
 
-                // Render bar
-                let bar_elements = compositor.render_bar_elements();
-                if !bar_elements.is_empty() {
-                    println!("  📊 Status bar: {} elements", bar_elements.len());
-                    
-                    // Actually render the bar to a buffer
-                    let bar_renderer = BarTextureRenderer::new(size.w, 30);
-                    let _bar_buffer = bar_renderer.render_to_buffer(&bar_elements);
-                    // TODO: Import this buffer as a texture and render it
-                }
-
-                // Submit frame
+                // Submit the frame
                 state.winit.submit(None)?;
-                println!("  ✅ Frame submitted");
 
                 Ok(())
             }
-            WebWMBackend::Drm(state) => {
-                state
-                    .render_frame()
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-            }
-            WebWMBackend::BasicDrm(state) => {
-                state
-                    .render_frame()
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-            }
+            WebWMBackend::Drm(state) => state
+                .render_frame(compositor)
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>),
+            WebWMBackend::BasicDrm(state) => state
+                .render_frame(compositor)
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>),
         }
     }
 
@@ -202,7 +176,9 @@ impl WebWMBackend {
                 size: new_size,
                 refresh: 60_000,
             };
-            state.output.change_current_state(Some(mode), None, None, Some((0, 0).into()));
+            state
+                .output
+                .change_current_state(Some(mode), None, None, Some((0, 0).into()));
             state.output.set_preferred(mode);
         }
     }

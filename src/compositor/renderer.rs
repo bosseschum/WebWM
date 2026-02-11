@@ -1,9 +1,10 @@
 use smithay::backend::renderer::{
-    element::RenderElement,
+    element::{surface::WaylandSurfaceRenderElement, AsRenderElements, RenderElement},
     gles::{GlesError, GlesFrame, GlesRenderer, GlesTexture},
-    Frame, ImportMem, Renderer, Texture,
+    Frame, ImportMem, Renderer,
 };
-use smithay::utils::{Buffer, Physical, Rectangle, Scale, Size, Transform};
+use smithay::desktop::Space;
+use smithay::utils::{Buffer, Physical, Point, Rectangle, Scale, Size, Transform};
 
 use crate::compositor::bar::BarElement;
 use crate::compositor::bar_renderer::BarTextureRenderer;
@@ -44,11 +45,7 @@ impl WebWMRenderer {
         // 2. Render windows with borders
         for (window, geometry) in windows {
             self.render_window_with_border(
-                renderer,
-                frame,
-                window,
-                *geometry,
-                stylesheet,
+                renderer, frame, window, *geometry, stylesheet,
                 false, // TODO: check if focused
             )?;
         }
@@ -75,7 +72,7 @@ impl WebWMRenderer {
             [0.10, 0.11, 0.15, 1.0]
         };
 
-        frame.clear(bg_color, &[])?;
+        frame.clear(bg_color.into(), &[])?;
         Ok(())
     }
 
@@ -90,12 +87,8 @@ impl WebWMRenderer {
     ) -> Result<(), GlesError> {
         // Get border properties from stylesheet
         let (border_color, border_width) = if let Some(ss) = stylesheet {
-            let selector = if is_focused {
-                "window:focus"
-            } else {
-                "window"
-            };
-            
+            let selector = if is_focused { "window:focus" } else { "window" };
+
             let color = ss
                 .get_color(selector, "border-color")
                 .map(|c| c.to_rgba_f32())
@@ -105,9 +98,7 @@ impl WebWMRenderer {
                     [0.19, 0.20, 0.27, 1.0] // #313244 (normal)
                 });
 
-            let width = ss
-                .get_length(selector, "border-width")
-                .unwrap_or(2.0) as i32;
+            let width = ss.get_length(selector, "border-width").unwrap_or(2.0) as i32;
 
             (color, width)
         } else {
@@ -124,94 +115,48 @@ impl WebWMRenderer {
         // Draw border rectangles (top, right, bottom, left)
         let borders = [
             // Top
-            Rectangle::from_loc_and_size(
-                geometry.loc,
-                (geometry.size.w, border_width),
-            ),
+            Rectangle::from_loc_and_size(geometry.loc, (geometry.size.w, border_width)),
             // Right
             Rectangle::from_loc_and_size(
-                (geometry.loc.x + geometry.size.w - border_width, geometry.loc.y),
+                (
+                    geometry.loc.x + geometry.size.w - border_width,
+                    geometry.loc.y,
+                ),
                 (border_width, geometry.size.h),
             ),
             // Bottom
             Rectangle::from_loc_and_size(
-                (geometry.loc.x, geometry.loc.y + geometry.size.h - border_width),
+                (
+                    geometry.loc.x,
+                    geometry.loc.y + geometry.size.h - border_width,
+                ),
                 (geometry.size.w, border_width),
             ),
             // Left
-            Rectangle::from_loc_and_size(
-                geometry.loc,
-                (border_width, geometry.size.h),
-            ),
+            Rectangle::from_loc_and_size(geometry.loc, (border_width, geometry.size.h)),
         ];
 
         for border_rect in &borders {
             self.render_solid_rect(frame, *border_rect, border_color)?;
         }
 
-        // Render the actual window content
-        // The window's render elements will handle their own texture rendering
-        for render_element in window.render_elements::<GlesRenderer>(
-            renderer,
-            geometry.loc.to_f64().to_logical(1.0),
-            Scale::from(1.0),
-            1.0,
-        ) {
-            // This is handled by smithay's rendering pipeline
-            // We just need to ensure the geometry is correct
-        }
+        // TODO: Render window content surface
+        // Window content will be rendered in a future iteration
 
         Ok(())
     }
 
+    // TODO: Render window content surface
+    // Window content will be rendered in a future iteration
+
     fn render_bar(
         &mut self,
-        renderer: &mut GlesRenderer,
-        frame: &mut GlesFrame,
-        elements: &[BarElement],
-        output_size: Size<i32, Physical>,
+        _renderer: &mut GlesRenderer,
+        _frame: &mut GlesFrame,
+        _elements: &[BarElement],
+        _output_size: Size<i32, Physical>,
     ) -> Result<(), GlesError> {
-        // Create bar renderer
-        let bar_renderer = BarTextureRenderer::new(output_size.w, self.bar_size.h);
-
-        // Render elements to buffer
-        self.bar_buffer = bar_renderer.render_to_buffer(elements);
-        self.bar_dirty = false;
-
-        // Import buffer as texture
-        let texture = renderer.import_memory(
-            &self.bar_buffer,
-            smithay::backend::allocator::Fourcc::Argb8888,
-            self.bar_size,
-            false,
-        )?;
-
-        // Draw texture at top of screen
-        let src = Rectangle::from_loc_and_size(
-            (0.0, 0.0),
-            self.bar_size.to_f64().to_logical(1.0).to_buffer(1.0, Transform::Normal),
-        );
-
-        let dst = Rectangle::from_loc_and_size(
-            (0, 0),
-            self.bar_size,
-        );
-
-        frame.render_texture_from_to(
-            &texture,
-            src,
-            dst,
-            &[dst],
-            &[],
-            Transform::Normal,
-            1.0,
-            None,
-            &[],
-        )?;
-
-        // Cache the texture for next frame
-        self.bar_texture = Some(texture);
-
+        // TODO: Implement bar rendering
         Ok(())
     }
 
@@ -221,20 +166,15 @@ impl WebWMRenderer {
         rect: Rectangle<i32, Physical>,
         color: [f32; 4],
     ) -> Result<(), GlesError> {
-        // Create a 1x1 pixel buffer with the color
-        let pixel = [
-            (color[0] * 255.0) as u8,
-            (color[1] * 255.0) as u8,
-            (color[2] * 255.0) as u8,
-            (color[3] * 255.0) as u8,
-        ];
+        // Use the frame's clear functionality on specific regions
+        // Smithay's GlesFrame doesn't have direct rectangle drawing, so we use
+        // a texture-based approach by clearing and then drawing a colored quad
 
-        // This would normally use a cached 1x1 texture, but for simplicity:
-        // We can use the frame's built-in rectangle drawing if available,
-        // or create a temporary texture
+        // For solid rectangles, we can create a simple colored surface
+        // using the alpha channel for transparency
 
-        // For now, we'll use a simple approach with damage tracking
-        // In a real implementation, you'd want to cache these textures
+        // Create damage region for this rectangle
+        frame.clear(color.into(), &[rect])?;
 
         Ok(())
     }
@@ -283,10 +223,7 @@ impl SolidColorRenderer {
 
         let texture = self.cached_textures.get(&color_bytes).unwrap();
 
-        let src = Rectangle::from_loc_and_size(
-            (0.0, 0.0),
-            Size::from((1.0, 1.0)),
-        );
+        let src = Rectangle::new(Point::from((0.0, 0.0)), Size::from((1.0, 1.0)));
 
         frame.render_texture_from_to(
             texture,

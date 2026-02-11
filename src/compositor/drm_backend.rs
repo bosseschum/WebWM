@@ -213,7 +213,7 @@ impl WebWMBackend {
         })
     }
 
-    pub fn render_frame(&mut self) -> Result<(), DrmError> {
+    pub fn render_frame(&mut self, _compositor: &mut WebWMCompositor) -> Result<(), DrmError> {
         let frame_count = self.frame_count.fetch_add(1, Ordering::SeqCst) + 1;
 
         // Only log detailed info every 60 frames to avoid spam
