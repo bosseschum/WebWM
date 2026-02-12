@@ -109,7 +109,7 @@ impl WebWMCompositor {
             None
         };
 
-        Self {
+        let mut compositor = Self {
             display_handle,
             space,
             clock,
@@ -127,7 +127,9 @@ impl WebWMCompositor {
             cursor_image_status: smithay::input::pointer::CursorImageStatus::default_named(),
             input_handler: input::InputHandler::new(),
             js_runtime,
-        }
+        };
+
+        compositor
     }
 
     pub fn add_window(&mut self, toplevel: ToplevelSurface) {
@@ -227,7 +229,7 @@ impl WebWMCompositor {
         }
     }
 
-    fn relayout(&mut self) {
+    pub fn relayout(&mut self) {
         self.relayout_with_size(Size::from((1920, 1080))) // Fallback size
     }
 
@@ -412,6 +414,14 @@ impl WebWMCompositor {
             )
         } else {
             Vec::new()
+        }
+    }
+
+    pub fn is_focused_window(&self, window: &smithay::desktop::Window) -> bool {
+        if let Some(focused_window) = self.workspace_manager.focused_window() {
+            std::ptr::eq(window, focused_window)
+        } else {
+            false
         }
     }
 

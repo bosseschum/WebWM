@@ -1,14 +1,11 @@
 use smithay::{
     backend::{
-        renderer::{
-            damage::OutputDamageTracker, element::AsRenderElements, gles::GlesRenderer, Frame,
-            Renderer,
-        },
+        renderer::{damage::OutputDamageTracker, gles::GlesRenderer, Bind, Frame, Renderer},
         winit::{self, WinitGraphicsBackend},
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::EventLoop,
-    utils::{Physical, Point, Rectangle, Size, Transform},
+    utils::{Physical, Rectangle, Size, Transform},
 };
 
 use crate::compositor::input::InputHandler;
@@ -101,12 +98,6 @@ impl WebWMBackend {
             WebWMBackend::Winit(state) => {
                 let size = state.winit.window_size();
 
-                // Bind renderer
-                state.winit.bind()?;
-
-                // Update layout with actual output size first
-                compositor.relayout_with_size(size);
-
                 // Get windows to render
                 let windows: Vec<_> = compositor
                     .space
@@ -118,36 +109,20 @@ impl WebWMBackend {
 
                         Some((
                             window,
-                            Rectangle::<i32, smithay::utils::Physical>::from_loc_and_size(
-                                (render_location.x, render_location.y),
-                                (geometry.size.w, geometry.size.h),
+                            Rectangle::<i32, smithay::utils::Physical>::new(
+                                (render_location.x, render_location.y).into(),
+                                (geometry.size.w, geometry.size.h).into(),
                             ),
                         ))
                     })
                     .collect();
 
-                // Get bar elements
-                let _bar_elements = compositor.render_bar_elements();
-
-                // Basic rendering for now
-                // Use the original working pattern from the existing code
+                // Bind the renderer for this frame
                 state.winit.bind()?;
+                let renderer = state.winit.renderer();
 
-                // For now, just use the simple rendering pattern
-                // We'll integrate WebWMRenderer in a future update
-                println!(
-                    "🎨 OpenGL rendering initialized with {} windows",
-                    windows.len()
-                );
-                for (i, (window, geometry)) in windows.iter().enumerate() {
-                    let status = if i == 0 { "focused" } else { "normal" };
-                    println!(
-                        "  Window {}: {}x{} at ({}, {}) [{}]",
-                        i, geometry.size.w, geometry.size.h, geometry.loc.x, geometry.loc.y, status
-                    );
-                }
-
-                // Submit the frame
+                // Submit frame - winit handles actual EGL context management
+                println!("🎨 Rendering frame - basic mode active");
                 state.winit.submit(None)?;
 
                 Ok(())

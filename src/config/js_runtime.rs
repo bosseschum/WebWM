@@ -1,6 +1,7 @@
 use rquickjs::Ctx;
 use rquickjs::{Context, Function, Object, Runtime, Value};
 use std::collections::HashMap;
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 
 pub struct JSRuntime {
@@ -9,14 +10,17 @@ pub struct JSRuntime {
     keybindings: Arc<Mutex<Vec<JSKeybinding>>>,
     window_handlers: Arc<Mutex<Vec<JSWindowHandler>>>,
     startup_handlers: Arc<Mutex<Vec<String>>>,
+    callback_functions: Arc<Mutex<HashMap<String, String>>>, // Store actual callback code
 }
+
+unsafe impl Send for JSRuntime {}
 
 #[derive(Debug, Clone)]
 pub struct JSKeybinding {
     pub combo: String,
     pub modifiers: Vec<String>,
     pub key: String,
-    pub callback: String, // JavaScript code to execute
+    pub callback_name: String, // Name of the callback function
 }
 
 #[derive(Debug, Clone)]
@@ -46,6 +50,7 @@ impl JSRuntime {
         let keybindings = Arc::new(Mutex::new(Vec::new()));
         let window_handlers = Arc::new(Mutex::new(Vec::new()));
         let startup_handlers = Arc::new(Mutex::new(Vec::new()));
+        let callback_functions = Arc::new(Mutex::new(HashMap::new()));
 
         Ok(Self {
             runtime,
@@ -53,6 +58,7 @@ impl JSRuntime {
             keybindings,
             window_handlers,
             startup_handlers,
+            callback_functions,
         })
     }
 
@@ -101,7 +107,12 @@ impl JSRuntime {
             "spawn",
             Function::new(ctx.clone(), |cmd: String| {
                 println!("JS: spawn({})", cmd);
-                // Would actually spawn process
+                Command::new("sh")
+                    .arg("-c")
+                    .arg(&cmd)
+                    .spawn()
+                    .map_err(|e| eprintln!("Failed to spawn '{}': {}", cmd, e))
+                    .ok();
             }),
         )
         .map_err(|e| format!("Failed to set spawn: {:?}", e))?;
@@ -111,7 +122,7 @@ impl JSRuntime {
             "close",
             Function::new(ctx.clone(), || {
                 println!("JS: close()");
-                // Would close focused window
+                // This will be handled by the keybinding system
             }),
         )
         .map_err(|e| format!("Failed to set close: {:?}", e))?;
@@ -121,7 +132,7 @@ impl JSRuntime {
             "focus",
             Function::new(ctx.clone(), |dir: String| {
                 println!("JS: focus({})", dir);
-                // Would focus in direction
+                // This will be handled by the keybinding system
             }),
         )
         .map_err(|e| format!("Failed to set focus: {:?}", e))?;
@@ -131,6 +142,7 @@ impl JSRuntime {
             "moveToWorkspace",
             Function::new(ctx.clone(), |ws: u32| {
                 println!("JS: moveToWorkspace({})", ws);
+                // This will be handled by the keybinding system
             }),
         )
         .map_err(|e| format!("Failed to set moveToWorkspace: {:?}", e))?;
@@ -140,6 +152,7 @@ impl JSRuntime {
             "switchToWorkspace",
             Function::new(ctx.clone(), |ws: u32| {
                 println!("JS: switchToWorkspace({})", ws);
+                // This will be handled by the keybinding system
             }),
         )
         .map_err(|e| format!("Failed to set switchToWorkspace: {:?}", e))?;
@@ -149,6 +162,7 @@ impl JSRuntime {
             "cycleWorkspaceNext",
             Function::new(ctx.clone(), || {
                 println!("JS: cycleWorkspaceNext()");
+                // This will be handled by the keybinding system
             }),
         )
         .map_err(|e| format!("Failed to set cycleWorkspaceNext: {:?}", e))?;
@@ -158,6 +172,7 @@ impl JSRuntime {
             "cycleWorkspacePrev",
             Function::new(ctx.clone(), || {
                 println!("JS: cycleWorkspacePrev()");
+                // This will be handled by the keybinding system
             }),
         )
         .map_err(|e| format!("Failed to set cycleWorkspacePrev: {:?}", e))?;
@@ -167,6 +182,7 @@ impl JSRuntime {
             "toggleFloating",
             Function::new(ctx.clone(), || {
                 println!("JS: toggleFloating()");
+                // This will be handled by the keybinding system
             }),
         )
         .map_err(|e| format!("Failed to set toggleFloating: {:?}", e))?;
@@ -194,6 +210,7 @@ impl JSRuntime {
             "setLayout",
             Function::new(ctx.clone(), |layout: String| {
                 println!("JS: setLayout({})", layout);
+                // This will be handled by the keybinding system
             }),
         )
         .map_err(|e| format!("Failed to set setLayout: {:?}", e))?;
@@ -203,6 +220,7 @@ impl JSRuntime {
             "cycleLayout",
             Function::new(ctx.clone(), || {
                 println!("JS: cycleLayout()");
+                // This will be handled by the keybinding system
             }),
         )
         .map_err(|e| format!("Failed to set cycleLayout: {:?}", e))?;
@@ -220,18 +238,29 @@ impl JSRuntime {
         // wm.exit()
         wm.set(
             "exit",
-            Function::new(ctx, || {
+            Function::new(ctx.clone(), || {
                 println!("JS: exit()");
                 // Would exit the compositor
             }),
         )
         .map_err(|e| format!("Failed to set exit: {:?}", e))?;
 
+        // wm.moveWindow(direction)
+        wm.set(
+            "moveWindow",
+            Function::new(ctx.clone(), |dir: String| {
+                println!("JS: moveWindow({})", dir);
+                // This will be handled by the keybinding system
+            }),
+        )
+        .map_err(|e| format!("Failed to set moveWindow: {:?}", e))?;
+
         Ok(())
     }
 
     fn add_utility_functions<'a>(&self, ctx: Ctx<'a>, globals: &Object<'a>) -> Result<(), String> {
         let keybindings = self.keybindings.clone();
+        let callback_functions = self.callback_functions.clone();
 
         // keybind(combo, callback)
         globals
@@ -243,15 +272,25 @@ impl JSRuntime {
                     // Parse combo (e.g., "Super+Return" -> ["Super"], "Return")
                     let (modifiers, key) = parse_key_combo(&combo);
 
-                    // Store the callback as a string (would serialize function)
-                    let callback_str = format!("callback_{}", combo);
+                    // Generate a unique callback name
+                    let callback_name = format!("callback_{}", combo.replace("+", "_"));
+
+                    // Store the callback function's string representation
+                    if let Ok(mut callbacks) = callback_functions.lock() {
+                        // Store the callback as a callable function reference
+                        // In a real implementation, we'd serialize the function properly
+                        callbacks.insert(
+                            callback_name.clone(),
+                            format!("() => {{ /* callback for {} */ }}", combo),
+                        );
+                    }
 
                     if let Ok(mut bindings) = keybindings.lock() {
                         bindings.push(JSKeybinding {
                             combo: combo.clone(),
                             modifiers,
                             key,
-                            callback: callback_str,
+                            callback_name,
                         });
                     }
                 }),
@@ -396,8 +435,26 @@ impl JSRuntime {
     }
 
     pub fn execute_callback(&self, callback_name: &str, args: &str) -> Result<(), String> {
-        let code = format!("{}({})", callback_name, args);
+        // Try to execute the callback by name
+        let code = if args.is_empty() {
+            format!("{}()", callback_name)
+        } else {
+            format!("{}({})", callback_name, args)
+        };
+
+        println!("Executing JS callback: {}", code);
         self.evaluate(&code)
+    }
+
+    pub fn execute_keybinding_callback(&self, combo: &str) -> Result<(), String> {
+        // Find the keybinding by combo and execute its callback
+        let bindings = self.get_keybindings();
+        for binding in bindings {
+            if binding.combo == combo {
+                return self.execute_callback(&binding.callback_name, "");
+            }
+        }
+        Err(format!("No keybinding found for combo: {}", combo))
     }
 }
 

@@ -152,7 +152,9 @@ fn load_web_config(
         config.keybindings.push(Keybinding {
             key: js_kb.key.clone(),
             modifiers: js_kb.modifiers.clone(),
-            action: Action::Custom { js: js_kb.callback },
+            action: Action::Custom {
+                js: js_kb.combo.clone(),
+            },
         });
     }
 
